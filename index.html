@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <meta
+      name="description"
+      content="免費、不需 API 金鑰的長文 Google 對照翻譯工具。"
+    />
+    <meta name="theme-color" content="#0d0e12" />
+    <title>長文對照翻譯</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="styles.css" />
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <div class="brand-mark" aria-hidden="true">譯</div>
+          <div>
+            <h1>長文對照翻譯</h1>
+            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.0.1</p>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <button id="rulesButton" class="button button-outline" type="button">
+            <span aria-hidden="true">⚙</span>
+            替換規則
+            <span id="ruleCount" class="rule-count" hidden>0</span>
+          </button>
+          <button
+            id="clearButton"
+            class="button button-ghost icon-button"
+            type="button"
+            aria-label="全部清除"
+            title="全部清除"
+            disabled
+          >
+            ♲
+          </button>
+        </div>
+      </header>
+
+      <section class="language-toolbar" aria-label="翻譯設定">
+        <label class="language-select-group">
+          <span class="field-label">原文</span>
+          <select id="sourceLanguage" class="language-select" aria-label="原文語言"></select>
+        </label>
+        <button
+          id="swapButton"
+          class="button button-ghost icon-button swap-button"
+          type="button"
+          aria-label="交換語言"
+          title="交換語言"
+        >
+          ⇄
+        </button>
+        <label class="language-select-group">
+          <span class="field-label">譯文</span>
+          <select id="targetLanguage" class="language-select" aria-label="譯文語言"></select>
+        </label>
+        <div class="toolbar-spacer"></div>
+        <button id="copyButton" class="button button-outline result-action" type="button" hidden>
+          ▣ 複製譯文
+        </button>
+        <button id="editButton" class="button button-outline result-action" type="button" hidden>
+          ✎ 編輯原文
+        </button>
+        <button id="translateButton" class="button button-primary" type="button">
+          ✦ 開始翻譯
+        </button>
+        <button id="stopButton" class="button button-danger" type="button" hidden>
+          × 停止
+        </button>
+      </section>
+
+      <section id="progressStrip" class="progress-strip" aria-live="polite" hidden>
+        <div><span class="spinner" aria-hidden="true"></span><span id="progressText">正在翻譯</span></div>
+        <progress id="progressBar" max="100" value="0"></progress>
+        <span id="progressPercent">0%</span>
+      </section>
+
+      <section id="composeView" class="compose-grid">
+        <article class="editor-pane">
+          <div class="pane-heading">
+            <div>
+              <span class="pane-kicker">SOURCE</span>
+              <h2 id="sourceHeading">自動偵測</h2>
+            </div>
+            <span id="paragraphStat" class="pane-stat">0 段</span>
+          </div>
+          <textarea
+            id="sourceEditor"
+            class="source-editor"
+            placeholder="把完整長文貼在這裡。&#10;&#10;空一行會被視為新的對照段落。"
+            spellcheck="false"
+            aria-label="原文輸入"
+          ></textarea>
+          <footer class="pane-footer">
+            <span id="characterStat">0 字元</span>
+            <span>不限制總長度 · 自動分段翻譯</span>
+          </footer>
+        </article>
+
+        <article class="preview-pane">
+          <div class="pane-heading">
+            <div>
+              <span class="pane-kicker">TRANSLATION</span>
+              <h2 id="targetHeading">中文</h2>
+            </div>
+          </div>
+          <div class="empty-preview">
+            <div class="empty-symbol" aria-hidden="true">文</div>
+            <h3 id="emptyTitle">譯文會出現在這裡</h3>
+            <p>完成後，把滑鼠停在任一段，左右相應段落就會一起亮起；手機則用點擊選取。</p>
+          </div>
+          <footer class="pane-footer">
+            <span>Google 網頁翻譯</span>
+            <span id="rulesStatus">尚無替換規則</span>
+          </footer>
+        </article>
+      </section>
+
+      <section id="readingView" class="reading-surface" hidden>
+        <div class="reading-headings">
+          <div>
+            <span class="pane-kicker">SOURCE</span>
+            <h2 id="readingSourceHeading">自動偵測</h2>
+          </div>
+          <div aria-hidden="true"></div>
+          <div>
+            <span class="pane-kicker">TRANSLATION</span>
+            <h2 id="readingTargetHeading">中文</h2>
+          </div>
+        </div>
+        <div id="paragraphPairs" class="paragraph-pairs"></div>
+        <footer class="reading-footer">
+          <span id="pairCount">0 組對照段落</span>
+          <span id="appliedRules">未套用替換規則</span>
+        </footer>
+      </section>
+
+      <footer class="app-footer">
+        <span>文字直接傳送至 Google 翻譯，不會儲存在本站。</span>
+        <span>免費公用端點並非 Google 正式承諾的 API，日後可能調整或停止。</span>
+      </footer>
+    </main>
+
+    <dialog id="rulesDialog" class="rules-dialog">
+      <form method="dialog" class="dialog-shell">
+        <header class="dialog-header">
+          <div>
+            <h2>替換規則</h2>
+            <p>譯文完成後由上往下套用。設定只存在這台裝置；普通換詞不必開 Regex。</p>
+          </div>
+          <button class="button button-ghost icon-button" value="close" aria-label="關閉">×</button>
+        </header>
+        <div id="rulesList" class="rules-list"></div>
+        <footer class="dialog-footer">
+          <div class="dialog-footer-group">
+            <input id="importRulesInput" type="file" accept="application/json,.json" hidden />
+            <button id="importRulesButton" class="button button-outline" type="button">⇧ 匯入</button>
+            <button id="exportRulesButton" class="button button-outline" type="button">⇩ 匯出</button>
+          </div>
+          <div class="dialog-footer-group">
+            <button id="addRuleButton" class="button button-outline" type="button">＋ 新增規則</button>
+            <button class="button button-primary" value="close">✓ 完成</button>
+          </div>
+        </footer>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>
