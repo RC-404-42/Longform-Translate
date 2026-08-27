@@ -17,7 +17,7 @@ const LANGUAGES = [
 const RULES_STORAGE_KEY = "longform-translate-rules-v1";
 const SETTINGS_STORAGE_KEY = "longform-translate-settings-v1";
 const DEFAULT_SETTINGS = Object.freeze({
-  chineseQuotes: false,
+  chineseQuotes: true,
 });
 const MAX_BATCH_CHARACTERS = 4200;
 const MAX_ITEMS_PER_BATCH = 24;

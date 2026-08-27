@@ -21,7 +21,7 @@
           <div class="brand-mark" aria-hidden="true">譯</div>
           <div>
             <h1>長文對照翻譯</h1>
-            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.1.0</p>
+            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.1.1</p>
           </div>
         </div>
         <div class="topbar-actions">
@@ -32,13 +32,14 @@
           </button>
           <button
             id="clearButton"
-            class="button button-ghost icon-button"
+            class="button button-clear"
             type="button"
             aria-label="全部清除"
             title="全部清除"
             disabled
           >
-            ♲
+            <span aria-hidden="true">♲</span>
+            全部清除
           </button>
         </div>
       </header>
@@ -164,7 +165,7 @@
             <p>僅在譯文為中文時，將英文雙引號轉為「」，單引號轉為『』；英文縮寫中的撇號會保留。</p>
           </div>
           <label class="toggle built-in-toggle">
-            <input id="chineseQuotesToggle" type="checkbox" />
+            <input id="chineseQuotesToggle" type="checkbox" checked />
             啟用
           </label>
         </section>
