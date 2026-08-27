@@ -15,6 +15,10 @@ const LANGUAGES = [
 ];
 
 const RULES_STORAGE_KEY = "longform-translate-rules-v1";
+const SETTINGS_STORAGE_KEY = "longform-translate-settings-v1";
+const DEFAULT_SETTINGS = Object.freeze({
+  chineseQuotes: false,
+});
 const MAX_BATCH_CHARACTERS = 4200;
 const MAX_ITEMS_PER_BATCH = 24;
 const GOOGLE_TRANSLATE_ENDPOINT =
@@ -57,6 +61,7 @@ const elements = {
   emptyTitle: document.querySelector("#emptyTitle"),
   rulesButton: document.querySelector("#rulesButton"),
   rulesDialog: document.querySelector("#rulesDialog"),
+  chineseQuotesToggle: document.querySelector("#chineseQuotesToggle"),
   rulesList: document.querySelector("#rulesList"),
   addRuleButton: document.querySelector("#addRuleButton"),
   importRulesButton: document.querySelector("#importRulesButton"),
@@ -67,9 +72,11 @@ const elements = {
 
 let paragraphs = [];
 let rules = [];
+let settings = { ...DEFAULT_SETTINGS };
 let abortController = null;
 let cachedGoogleKey = null;
 let activeParagraph = null;
+let activeSentence = null;
 let toastTimer = null;
 
 function randomId() {
@@ -127,6 +134,70 @@ function parseParagraphs(text) {
     .filter(Boolean);
 }
 
+function sentenceLocale(language, text = "") {
+  if (language === "auto") {
+    if (/[\u3040-\u30ff]/u.test(text)) return "ja";
+    if (/[\uac00-\ud7af]/u.test(text)) return "ko";
+    if (/[\u3400-\u9fff]/u.test(text)) return "zh-Hant";
+    return "en";
+  }
+  if (language === "zh-TW") return "zh-Hant";
+  return language;
+}
+
+function normalizeSentenceSegments(segments) {
+  const normalized = [];
+  segments.forEach((segment) => {
+    if (!segment) return;
+    if (!segment.trim() && normalized.length) {
+      normalized[normalized.length - 1] += segment;
+      return;
+    }
+    normalized.push(segment);
+  });
+  return normalized.filter((segment) => segment.trim());
+}
+
+function fallbackSentenceSegments(text) {
+  const segments = [];
+  let start = 0;
+  let index = 0;
+
+  while (index < text.length) {
+    if (/[.!?。！？…]/u.test(text[index])) {
+      let end = index + 1;
+      while (end < text.length && /[.!?。！？…]/u.test(text[end])) end += 1;
+      while (end < text.length && /["'”’」』）》】]/u.test(text[end])) end += 1;
+      while (end < text.length && /\s/u.test(text[end])) end += 1;
+      segments.push(text.slice(start, end));
+      start = end;
+      index = end;
+      continue;
+    }
+    index += 1;
+  }
+
+  if (start < text.length) segments.push(text.slice(start));
+  return normalizeSentenceSegments(segments.length ? segments : [text]);
+}
+
+function segmentSentences(text, language = "auto") {
+  if (!text.trim()) return [];
+  if (typeof Intl !== "undefined" && typeof Intl.Segmenter === "function") {
+    try {
+      const segmenter = new Intl.Segmenter(sentenceLocale(language, text), {
+        granularity: "sentence",
+      });
+      return normalizeSentenceSegments(
+        Array.from(segmenter.segment(text), ({ segment }) => segment),
+      );
+    } catch {
+      // Fall through for browsers that reject an uncommon locale code.
+    }
+  }
+  return fallbackSentenceSegments(text);
+}
+
 function splitLongText(text, maxLength = MAX_BATCH_CHARACTERS) {
   const characters = Array.from(text);
   if (characters.length <= maxLength) return [text];
@@ -161,6 +232,49 @@ function splitLongText(text, maxLength = MAX_BATCH_CHARACTERS) {
   return parts.filter(Boolean);
 }
 
+function createSentenceJobs(sources, sourceLanguage) {
+  const sentenceSources = sources.map((source) =>
+    segmentSentences(source, sourceLanguage),
+  );
+  const jobs = [];
+
+  sentenceSources.forEach((sentences, paragraphIndex) => {
+    const fragments = sentences.flatMap((text, sentenceIndex) =>
+      splitLongText(text).map((fragment, fragmentIndex) => ({
+        sentenceIndex,
+        fragmentIndex,
+        text: fragment,
+      })),
+    );
+    let current = [];
+    let currentLength = 0;
+    let partIndex = 0;
+
+    const flush = () => {
+      if (!current.length) return;
+      jobs.push({
+        paragraphIndex,
+        partIndex,
+        text: current.map((fragment) => fragment.text).join(""),
+        segments: current,
+      });
+      partIndex += 1;
+      current = [];
+      currentLength = 0;
+    };
+
+    fragments.forEach((fragment) => {
+      const length = Array.from(fragment.text).length;
+      if (current.length && currentLength + length > MAX_BATCH_CHARACTERS) flush();
+      current.push(fragment);
+      currentLength += length;
+    });
+    flush();
+  });
+
+  return { sentenceSources, jobs };
+}
+
 function makeBatches(jobs) {
   const batches = [];
   let current = [];
@@ -191,12 +305,62 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;");
 }
 
+function renderTranslatableHtml(job) {
+  const content = job.segments
+    .map(
+      (segment) =>
+        `<span data-sentence="${segment.sentenceIndex}" data-fragment="${segment.fragmentIndex}">${escapeHtml(segment.text)}</span>`,
+    )
+    .join("");
+  return `<pre>${content}</pre>`;
+}
+
 function readTranslatedHtml(value) {
   const parsed = new DOMParser().parseFromString(value, "text/html");
   parsed.querySelectorAll("i").forEach((node) => node.remove());
   return (parsed.body.textContent || "")
     .replace(/^\s+|\s+$/g, "")
     .replace(/\u200b/g, " ");
+}
+
+function readTranslatedSegments(value) {
+  const parsed = new DOMParser().parseFromString(value, "text/html");
+  parsed.querySelectorAll("i").forEach((node) => node.remove());
+  const container = parsed.querySelector("pre") || parsed.body;
+  const segments = [];
+  let leadingText = "";
+  let current = null;
+
+  Array.from(container.childNodes).forEach((node) => {
+    if (node.nodeType === 1 && node.matches?.("span[data-sentence]")) {
+      current = {
+        sentenceIndex: Number.parseInt(node.dataset.sentence || "", 10),
+        fragmentIndex: Number.parseInt(node.dataset.fragment || "0", 10),
+        text: node.textContent || "",
+      };
+      segments.push(current);
+      return;
+    }
+
+    const text = node.textContent || "";
+    if (current) current.text += text;
+    else leadingText += text;
+  });
+
+  const validSegments = segments
+    .filter((segment) => Number.isFinite(segment.sentenceIndex))
+    .map((segment) => ({
+      ...segment,
+      text: segment.text.replace(/\u200b/g, " "),
+    }));
+  if (leadingText && validSegments.length) {
+    validSegments[0].text = leadingText + validSegments[0].text;
+  }
+
+  return {
+    text: readTranslatedHtml(value),
+    segments: validSegments,
+  };
 }
 
 function fallbackGoogleKey() {
@@ -226,7 +390,7 @@ async function getGoogleKey(signal) {
   return key;
 }
 
-async function translateBatch(texts, sourceLanguage, targetLanguage, signal) {
+async function translateBatch(jobs, sourceLanguage, targetLanguage, signal) {
   const key = await getGoogleKey(signal);
   let lastError;
 
@@ -240,7 +404,7 @@ async function translateBatch(texts, sourceLanguage, targetLanguage, signal) {
         },
         body: JSON.stringify([
           [
-            texts.map((text) => `<pre>${escapeHtml(text)}</pre>`),
+            jobs.map(renderTranslatableHtml),
             sourceLanguage,
             targetLanguage,
           ],
@@ -250,10 +414,10 @@ async function translateBatch(texts, sourceLanguage, targetLanguage, signal) {
       });
       if (!response.ok) throw new Error(`Google returned ${response.status}`);
       const data = await response.json();
-      if (!Array.isArray(data) || !Array.isArray(data[0]) || data[0].length !== texts.length) {
+      if (!Array.isArray(data) || !Array.isArray(data[0]) || data[0].length !== jobs.length) {
         throw new Error("Unexpected response");
       }
-      return data[0].map((value) => readTranslatedHtml(String(value)));
+      return data[0].map((value) => readTranslatedSegments(String(value)));
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") throw error;
       lastError = error;
@@ -286,6 +450,106 @@ function applyRules(text) {
   }, text);
 }
 
+function isWordCharacter(value) {
+  return Boolean(value) && /[\p{L}\p{N}]/u.test(value);
+}
+
+function convertChineseQuotes(text, state) {
+  const characters = Array.from(text);
+  let result = "";
+
+  characters.forEach((character, index) => {
+    const previous = characters[index - 1] || "";
+    const next = characters[index + 1] || "";
+
+    if (character === "“") {
+      result += "「";
+      state.doubleOpen = false;
+      return;
+    }
+    if (character === "”") {
+      result += "」";
+      state.doubleOpen = true;
+      return;
+    }
+    if (character === '"') {
+      result += state.doubleOpen ? "「" : "」";
+      state.doubleOpen = !state.doubleOpen;
+      return;
+    }
+    if (character === "‘") {
+      result += "『";
+      state.singleOpen = false;
+      return;
+    }
+    if (character === "’") {
+      if (isWordCharacter(previous) && isWordCharacter(next)) {
+        result += character;
+      } else {
+        result += "』";
+        state.singleOpen = true;
+      }
+      return;
+    }
+    if (character === "'") {
+      if (isWordCharacter(previous) && isWordCharacter(next)) {
+        result += character;
+      } else {
+        result += state.singleOpen ? "『" : "』";
+        state.singleOpen = !state.singleOpen;
+      }
+      return;
+    }
+    result += character;
+  });
+
+  return result;
+}
+
+function joinTranslatedParts(parts, targetLanguage) {
+  const needsSpace = !/^(zh|ja|ko)/i.test(targetLanguage);
+  return parts.filter(Boolean).reduce((result, part) => {
+    if (!result) return part;
+    if (!needsSpace || /\s$/u.test(result) || /^\s/u.test(part)) return result + part;
+    return `${result} ${part}`;
+  }, "");
+}
+
+function formatParagraph(paragraph) {
+  const quoteState = { doubleOpen: true, singleOpen: true };
+  const sourceSentences = paragraph.sentences?.length
+    ? paragraph.sentences
+    : [{
+        id: 0,
+        source: paragraph.source,
+        rawTranslation: paragraph.rawTranslation,
+      }];
+  const useChineseQuotes =
+    settings.chineseQuotes && elements.targetLanguage.value === "zh-TW";
+  const sentences = sourceSentences.map((sentence) => {
+    const withBuiltIns = useChineseQuotes
+      ? convertChineseQuotes(sentence.rawTranslation, quoteState)
+      : sentence.rawTranslation;
+    return {
+      ...sentence,
+      translation: applyRules(withBuiltIns),
+    };
+  });
+
+  return {
+    ...paragraph,
+    sentences,
+    translation: joinTranslatedParts(
+      sentences.map((sentence) => sentence.translation),
+      elements.targetLanguage.value,
+    ).trim(),
+  };
+}
+
+function reapplyFormatting() {
+  paragraphs = paragraphs.map((paragraph) => formatParagraph(paragraph));
+}
+
 function isRuleInvalid(rule) {
   if (!rule.useRegex || !rule.pattern) return false;
   try {
@@ -302,10 +566,31 @@ function enabledRuleCount() {
 
 function saveRules() {
   localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(rules));
-  paragraphs = paragraphs.map((paragraph) => ({
-    ...paragraph,
-    translation: applyRules(paragraph.rawTranslation),
-  }));
+  reapplyFormatting();
+  updateRuleStatus();
+  if (paragraphs.length) renderParagraphs();
+}
+
+function loadSettings() {
+  try {
+    const saved = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      settings = {
+        ...DEFAULT_SETTINGS,
+        chineseQuotes: Boolean(parsed.chineseQuotes),
+      };
+    }
+  } catch {
+    settings = { ...DEFAULT_SETTINGS };
+    showToast("內建格式設定讀取失敗，已使用預設值。", "error");
+  }
+  elements.chineseQuotesToggle.checked = settings.chineseQuotes;
+}
+
+function saveSettings() {
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  reapplyFormatting();
   updateRuleStatus();
   if (paragraphs.length) renderParagraphs();
 }
@@ -331,13 +616,20 @@ function loadRules() {
 }
 
 function updateRuleStatus() {
-  const count = enabledRuleCount();
+  const customCount = enabledRuleCount();
+  const builtInCount = settings.chineseQuotes ? 1 : 0;
+  const count = customCount + builtInCount;
+  const descriptions = [];
+  if (settings.chineseQuotes) descriptions.push("中文引號");
+  if (customCount) descriptions.push(`${customCount} 條規則`);
+  const summary = descriptions.join(" + ");
+
   elements.ruleCount.textContent = String(count);
   elements.ruleCount.hidden = count === 0;
-  elements.rulesStatus.textContent = count ? `套用 ${count} 條規則` : "尚無替換規則";
+  elements.rulesStatus.textContent = count ? `套用：${summary}` : "尚無文字處理";
   elements.appliedRules.textContent = count
-    ? `已套用 ${count} 條替換規則`
-    : "未套用替換規則";
+    ? `已套用：${summary}`
+    : "未套用文字處理";
   elements.exportRulesButton.disabled = rules.length === 0;
 }
 
@@ -463,6 +755,7 @@ function updateLanguageHeadings() {
 function resetResult() {
   paragraphs = [];
   activeParagraph = null;
+  activeSentence = null;
   elements.readingView.hidden = true;
   elements.composeView.hidden = false;
   elements.copyButton.hidden = true;
@@ -489,8 +782,65 @@ function updateProgress(completed, total) {
 
 function setActiveParagraph(id) {
   activeParagraph = id;
+  activeSentence = null;
   elements.paragraphPairs.querySelectorAll(".paragraph-pair").forEach((pair) => {
     pair.classList.toggle("is-active", Number(pair.dataset.id) === id);
+    pair.classList.remove("has-active-sentence");
+    pair.querySelectorAll(".sentence-segment").forEach((sentence) => {
+      sentence.classList.remove("is-active");
+    });
+  });
+}
+
+function setActiveSentence(paragraphId, sentenceId) {
+  activeParagraph = paragraphId;
+  activeSentence = `${paragraphId}:${sentenceId}`;
+  elements.paragraphPairs.querySelectorAll(".paragraph-pair").forEach((pair) => {
+    const pairIsActive = Number(pair.dataset.id) === paragraphId;
+    pair.classList.toggle("is-active", pairIsActive);
+    pair.classList.toggle("has-active-sentence", pairIsActive);
+    pair.querySelectorAll(".sentence-segment").forEach((sentence) => {
+      sentence.classList.toggle(
+        "is-active",
+        pairIsActive && Number(sentence.dataset.sentenceId) === sentenceId,
+      );
+    });
+  });
+}
+
+function appendSentenceSegments(card, paragraph, field, label) {
+  paragraph.sentences.forEach((sentence) => {
+    const segment = document.createElement("span");
+    segment.className = "sentence-segment";
+    segment.dataset.sentenceId = String(sentence.id);
+    segment.tabIndex = 0;
+    segment.setAttribute("role", "button");
+    segment.setAttribute(
+      "aria-label",
+      `${label}第 ${paragraph.id + 1} 段第 ${sentence.id + 1} 句`,
+    );
+    segment.textContent = sentence[field];
+    segment.addEventListener("mouseenter", () => {
+      setActiveSentence(paragraph.id, sentence.id);
+    });
+    segment.addEventListener("focus", () => {
+      setActiveSentence(paragraph.id, sentence.id);
+    });
+    segment.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (activeSentence === `${paragraph.id}:${sentence.id}`) {
+        setActiveParagraph(paragraph.id);
+      } else {
+        setActiveSentence(paragraph.id, sentence.id);
+      }
+    });
+    segment.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        segment.click();
+      }
+    });
+    card.append(segment);
   });
 }
 
@@ -504,8 +854,8 @@ function renderParagraphs() {
     const source = document.createElement("div");
     source.className = "paragraph-card source-card";
     source.tabIndex = 0;
-    source.textContent = paragraph.source;
     source.setAttribute("aria-label", `原文第 ${paragraph.id + 1} 段`);
+    appendSentenceSegments(source, paragraph, "source", "原文");
 
     const connector = document.createElement("div");
     connector.className = "pair-connector";
@@ -517,23 +867,32 @@ function renderParagraphs() {
     const translation = document.createElement("div");
     translation.className = "paragraph-card translation-card";
     translation.tabIndex = 0;
-    translation.textContent = paragraph.translation;
     translation.setAttribute("aria-label", `譯文第 ${paragraph.id + 1} 段`);
+    appendSentenceSegments(translation, paragraph, "translation", "譯文");
 
     pair.append(source, connector, translation);
     pair.addEventListener("mouseenter", () => setActiveParagraph(paragraph.id));
     pair.addEventListener("mouseleave", () => setActiveParagraph(null));
-    pair.addEventListener("focusin", () => setActiveParagraph(paragraph.id));
+    pair.addEventListener("focusin", (event) => {
+      if (!event.target.closest(".sentence-segment")) {
+        setActiveParagraph(paragraph.id);
+      }
+    });
     pair.addEventListener("focusout", (event) => {
       if (!pair.contains(event.relatedTarget)) setActiveParagraph(null);
     });
-    pair.addEventListener("click", () => {
+    pair.addEventListener("click", (event) => {
+      if (event.target.closest(".sentence-segment")) return;
       setActiveParagraph(activeParagraph === paragraph.id ? null : paragraph.id);
     });
     elements.paragraphPairs.append(pair);
   });
 
-  elements.pairCount.textContent = `${paragraphs.length} 組對照段落`;
+  const sentenceCount = paragraphs.reduce(
+    (total, paragraph) => total + paragraph.sentences.length,
+    0,
+  );
+  elements.pairCount.textContent = `${paragraphs.length} 段 · ${sentenceCount} 句`;
   elements.composeView.hidden = true;
   elements.readingView.hidden = false;
   elements.copyButton.hidden = false;
@@ -541,6 +900,45 @@ function renderParagraphs() {
   elements.translateButton.textContent = "✦ 重新翻譯";
   updateRuleStatus();
   updateStats();
+}
+
+function fallbackAlignedSegments(job, translatedText, targetLanguage) {
+  const sentenceIds = [...new Set(job.segments.map((segment) => segment.sentenceIndex))];
+  const translatedSentences = segmentSentences(translatedText, targetLanguage);
+  if (!sentenceIds.length) return [];
+  if (sentenceIds.length === 1 || !translatedSentences.length) {
+    return [{
+      sentenceIndex: sentenceIds[0],
+      fragmentIndex: 0,
+      text: translatedText,
+    }];
+  }
+
+  const buckets = sentenceIds.map(() => []);
+  translatedSentences.forEach((text, index) => {
+    const bucketIndex = Math.min(
+      Math.floor((index * sentenceIds.length) / translatedSentences.length),
+      sentenceIds.length - 1,
+    );
+    buckets[bucketIndex].push(text);
+  });
+  return sentenceIds.map((sentenceIndex, index) => ({
+    sentenceIndex,
+    fragmentIndex: 0,
+    text: buckets[index].join(""),
+  }));
+}
+
+function alignedSegmentsForJob(job, translated, targetLanguage) {
+  const expectedIds = new Set(job.segments.map((segment) => segment.sentenceIndex));
+  const preserved = translated.segments.filter((segment) =>
+    expectedIds.has(segment.sentenceIndex),
+  );
+  const preservedIds = new Set(preserved.map((segment) => segment.sentenceIndex));
+  if (preserved.length && [...expectedIds].every((id) => preservedIds.has(id))) {
+    return preserved;
+  }
+  return fallbackAlignedSegments(job, translated.text, targetLanguage);
 }
 
 async function translate() {
@@ -554,12 +952,9 @@ async function translate() {
     return;
   }
 
-  const jobs = sources.flatMap((paragraph, paragraphIndex) =>
-    splitLongText(paragraph).map((text, partIndex) => ({
-      paragraphIndex,
-      partIndex,
-      text,
-    })),
+  const { sentenceSources, jobs } = createSentenceJobs(
+    sources,
+    elements.sourceLanguage.value,
   );
   const batches = makeBatches(jobs);
   abortController = new AbortController();
@@ -577,7 +972,7 @@ async function translate() {
         nextBatch += 1;
         const batch = batches[batchIndex];
         const translated = await translateBatch(
-          batch.map((job) => job.text),
+          batch,
           elements.sourceLanguage.value,
           elements.targetLanguage.value,
           abortController.signal,
@@ -594,20 +989,50 @@ async function translate() {
       Array.from({ length: Math.min(3, batches.length) }, () => worker()),
     );
 
-    const joiner = /^(zh|ja|ko)/i.test(elements.targetLanguage.value) ? "" : " ";
+    const translatedBySentence = new Map();
+    jobs.forEach((job) => {
+      const translated = results.get(`${job.paragraphIndex}:${job.partIndex}`);
+      if (!translated) return;
+      alignedSegmentsForJob(
+        job,
+        translated,
+        elements.targetLanguage.value,
+      ).forEach((segment) => {
+        const key = `${job.paragraphIndex}:${segment.sentenceIndex}`;
+        const parts = translatedBySentence.get(key) || [];
+        parts.push(segment.text);
+        translatedBySentence.set(key, parts);
+      });
+    });
+
     paragraphs = sources.map((source, paragraphIndex) => {
-      const rawTranslation = splitLongText(source)
-        .map((_, partIndex) => results.get(`${paragraphIndex}:${partIndex}`) || "")
-        .join(joiner);
-      return {
+      const sentences = sentenceSources[paragraphIndex].map(
+        (sentenceSource, sentenceIndex) => ({
+          id: sentenceIndex,
+          source: sentenceSource,
+          rawTranslation: joinTranslatedParts(
+            translatedBySentence.get(`${paragraphIndex}:${sentenceIndex}`) || [],
+            elements.targetLanguage.value,
+          ),
+        }),
+      );
+      const paragraph = {
         id: paragraphIndex,
         source,
-        rawTranslation,
-        translation: applyRules(rawTranslation),
+        rawTranslation: joinTranslatedParts(
+          sentences.map((sentence) => sentence.rawTranslation),
+          elements.targetLanguage.value,
+        ).trim(),
+        sentences,
       };
+      return formatParagraph(paragraph);
     });
     renderParagraphs();
-    showToast(`翻譯完成，共 ${paragraphs.length} 個段落。`);
+    const sentenceCount = paragraphs.reduce(
+      (total, paragraph) => total + paragraph.sentences.length,
+      0,
+    );
+    showToast(`翻譯完成，共 ${paragraphs.length} 段、${sentenceCount} 句。`);
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
       showToast("已停止翻譯。");
@@ -698,6 +1123,10 @@ elements.rulesButton.addEventListener("click", () => {
   renderRules();
   elements.rulesDialog.showModal();
 });
+elements.chineseQuotesToggle.addEventListener("change", () => {
+  settings.chineseQuotes = elements.chineseQuotesToggle.checked;
+  saveSettings();
+});
 elements.addRuleButton.addEventListener("click", () => {
   rules.push(createRule());
   saveRules();
@@ -714,6 +1143,7 @@ elements.importRulesInput.addEventListener("change", () => {
 
 populateLanguages();
 loadRules();
+loadSettings();
 updateLanguageHeadings();
 updateRuleStatus();
 updateStats();

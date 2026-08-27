@@ -21,7 +21,7 @@
           <div class="brand-mark" aria-hidden="true">譯</div>
           <div>
             <h1>長文對照翻譯</h1>
-            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.0.1</p>
+            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.1.0</p>
           </div>
         </div>
         <div class="topbar-actions">
@@ -114,11 +114,11 @@
           <div class="empty-preview">
             <div class="empty-symbol" aria-hidden="true">文</div>
             <h3 id="emptyTitle">譯文會出現在這裡</h3>
-            <p>完成後，把滑鼠停在任一段，左右相應段落就會一起亮起；手機則用點擊選取。</p>
+            <p>完成後可懸浮或點擊句子，左右對應內容會同步亮起；點段落空白處則選取整段。</p>
           </div>
           <footer class="pane-footer">
             <span>Google 網頁翻譯</span>
-            <span id="rulesStatus">尚無替換規則</span>
+            <span id="rulesStatus">尚無文字處理</span>
           </footer>
         </article>
       </section>
@@ -138,7 +138,7 @@
         <div id="paragraphPairs" class="paragraph-pairs"></div>
         <footer class="reading-footer">
           <span id="pairCount">0 組對照段落</span>
-          <span id="appliedRules">未套用替換規則</span>
+          <span id="appliedRules">未套用文字處理</span>
         </footer>
       </section>
 
@@ -157,6 +157,17 @@
           </div>
           <button class="button button-ghost icon-button" value="close" aria-label="關閉">×</button>
         </header>
+        <section class="built-in-rule" aria-labelledby="chineseQuotesHeading">
+          <div>
+            <span class="pane-kicker">BUILT-IN</span>
+            <h3 id="chineseQuotesHeading">中文引號</h3>
+            <p>僅在譯文為中文時，將英文雙引號轉為「」，單引號轉為『』；英文縮寫中的撇號會保留。</p>
+          </div>
+          <label class="toggle built-in-toggle">
+            <input id="chineseQuotesToggle" type="checkbox" />
+            啟用
+          </label>
+        </section>
         <div id="rulesList" class="rules-list"></div>
         <footer class="dialog-footer">
           <div class="dialog-footer-group">

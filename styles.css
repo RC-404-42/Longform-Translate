@@ -451,6 +451,19 @@ progress::-moz-progress-bar {
   color: #e7e4ee;
 }
 
+.sentence-segment {
+  border-radius: 4px;
+  cursor: pointer;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  transition: background 140ms ease, color 140ms ease, box-shadow 140ms ease,
+    opacity 140ms ease;
+}
+
+.sentence-segment:hover {
+  background: #a991ff22;
+}
+
 .pair-connector {
   position: relative;
   display: grid;
@@ -505,6 +518,18 @@ progress::-moz-progress-bar {
   background: #5a4b77;
 }
 
+.paragraph-pair.has-active-sentence .sentence-segment:not(.is-active) {
+  color: #96929f;
+  opacity: .72;
+}
+
+.paragraph-pair.has-active-sentence .sentence-segment.is-active {
+  background: #66528f;
+  color: #fff;
+  box-shadow: 0 0 0 2px #a991ff2b;
+  opacity: 1;
+}
+
 .app-footer {
   min-height: 52px;
   display: flex;
@@ -555,6 +580,34 @@ progress::-moz-progress-bar {
   margin: 5px 0 0;
   color: var(--muted);
   font-size: 12px;
+}
+
+.built-in-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 14px 14px 0;
+  border: 1px solid #4c4265;
+  border-radius: 12px;
+  padding: 13px 14px;
+  background: #1d1926;
+}
+
+.built-in-rule h3 {
+  margin: 3px 0 0;
+  font-size: 14px;
+}
+
+.built-in-rule p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.built-in-toggle {
+  flex: none;
 }
 
 .dialog-footer {
@@ -768,6 +821,7 @@ progress::-moz-progress-bar {
   .rule-arrow { display: none; }
   .rule-options { flex-wrap: wrap; }
   .regex-error { width: 100%; margin-left: 0; }
+  .built-in-rule { align-items: flex-start; flex-direction: column; }
   .dialog-footer { align-items: stretch; flex-direction: column; }
   .dialog-footer-group { width: 100%; }
   .dialog-footer-group .button { flex: 1; }
