@@ -578,7 +578,9 @@ function loadSettings() {
       const parsed = JSON.parse(saved);
       settings = {
         ...DEFAULT_SETTINGS,
-        chineseQuotes: Boolean(parsed.chineseQuotes),
+        chineseQuotes: typeof parsed.chineseQuotes === "boolean"
+          ? parsed.chineseQuotes
+          : DEFAULT_SETTINGS.chineseQuotes,
       };
     }
   } catch {
@@ -1123,8 +1125,8 @@ elements.rulesButton.addEventListener("click", () => {
   renderRules();
   elements.rulesDialog.showModal();
 });
-elements.chineseQuotesToggle.addEventListener("change", () => {
-  settings.chineseQuotes = elements.chineseQuotesToggle.checked;
+elements.chineseQuotesToggle.addEventListener("input", (event) => {
+  settings.chineseQuotes = event.currentTarget.checked;
   saveSettings();
 });
 elements.addRuleButton.addEventListener("click", () => {
