@@ -470,6 +470,7 @@ progress::-moz-progress-bar {
 .paragraph-card:lang(ja),
 .paragraph-card:lang(ko) {
   font-family: var(--font);
+  font-kerning: none;
 }
 
 .sentence-segment {
