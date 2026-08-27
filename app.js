@@ -855,6 +855,7 @@ function renderParagraphs() {
 
     const source = document.createElement("div");
     source.className = "paragraph-card source-card";
+    source.lang = sentenceLocale(elements.sourceLanguage.value, paragraph.source);
     source.tabIndex = 0;
     source.setAttribute("aria-label", `原文第 ${paragraph.id + 1} 段`);
     appendSentenceSegments(source, paragraph, "source", "原文");
@@ -868,6 +869,10 @@ function renderParagraphs() {
 
     const translation = document.createElement("div");
     translation.className = "paragraph-card translation-card";
+    translation.lang = sentenceLocale(
+      elements.targetLanguage.value,
+      paragraph.translation,
+    );
     translation.tabIndex = 0;
     translation.setAttribute("aria-label", `譯文第 ${paragraph.id + 1} 段`);
     appendSentenceSegments(translation, paragraph, "translation", "譯文");

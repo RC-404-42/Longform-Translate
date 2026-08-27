@@ -466,6 +466,12 @@ progress::-moz-progress-bar {
   color: #e7e4ee;
 }
 
+.paragraph-card:lang(zh),
+.paragraph-card:lang(ja),
+.paragraph-card:lang(ko) {
+  font-family: var(--font);
+}
+
 .sentence-segment {
   border-radius: 4px;
   cursor: pointer;
