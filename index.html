@@ -11,8 +11,8 @@
     <meta name="theme-color" content="#0d0e12" />
     <title>長文對照翻譯</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=1.2.0" />
-    <script src="app.js?v=1.2.0" defer></script>
+    <link rel="stylesheet" href="styles.css?v=1.2.1" />
+    <script src="app.js?v=1.2.1" defer></script>
   </head>
   <body>
     <main class="app-shell">
@@ -21,7 +21,7 @@
           <div class="brand-mark" aria-hidden="true">譯</div>
           <div>
             <h1>長文對照翻譯</h1>
-            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.2.0</p>
+            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.2.1</p>
           </div>
         </div>
         <div class="topbar-actions">
@@ -45,6 +45,19 @@
       </header>
 
       <section class="language-toolbar" aria-label="翻譯設定">
+        <button
+          id="mobileToolbarToggle"
+          class="mobile-toolbar-toggle"
+          type="button"
+          aria-expanded="true"
+          aria-label="收合翻譯設定"
+        >
+          <span class="mobile-toolbar-summary">
+            <strong id="mobileToolbarLanguageSummary">自動偵測 → 中文</strong>
+            <span id="mobileToolbarActionText">收合設定</span>
+          </span>
+          <span id="mobileToolbarChevron" class="mobile-toolbar-chevron" aria-hidden="true">⌃</span>
+        </button>
         <label class="language-select-group">
           <span class="field-label">原文</span>
           <select id="sourceLanguage" class="language-select" aria-label="原文語言"></select>
@@ -68,18 +81,20 @@
           <span class="switch-track" aria-hidden="true"><span></span></span>
           <span>即時翻譯</span>
         </label>
-        <button id="copyButton" class="button button-outline result-action" type="button" hidden>
-          ▣ 複製譯文
-        </button>
-        <button id="editButton" class="button button-outline result-action" type="button" hidden>
-          ✎ 編輯原文
-        </button>
-        <button id="translateButton" class="button button-primary" type="button">
-          ✦ 開始翻譯
-        </button>
-        <button id="stopButton" class="button button-danger" type="button" hidden>
-          × 停止
-        </button>
+        <div class="toolbar-actions">
+          <button id="copyButton" class="button button-outline result-action" type="button" hidden>
+            ▣ 複製譯文
+          </button>
+          <button id="editButton" class="button button-outline result-action" type="button" hidden>
+            ✎ 編輯原文
+          </button>
+          <button id="translateButton" class="button button-primary" type="button">
+            ✦ 開始翻譯
+          </button>
+          <button id="stopButton" class="button button-danger" type="button" hidden>
+            × 停止
+          </button>
+        </div>
       </section>
 
       <section id="progressStrip" class="progress-strip" aria-live="polite" hidden>

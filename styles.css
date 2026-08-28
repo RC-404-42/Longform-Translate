@@ -248,6 +248,16 @@ input:focus-visible,
   flex: 1;
 }
 
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.mobile-toolbar-toggle {
+  display: none;
+}
+
 .live-mode-toggle {
   min-height: 38px;
   display: inline-flex;
@@ -910,10 +920,73 @@ progress::-moz-progress-bar {
   .brand-mark { width: 36px; height: 36px; }
 
   .language-toolbar {
-    min-height: 116px;
+    min-height: 0;
     display: grid;
     grid-template-columns: minmax(0, 1fr) 38px minmax(0, 1fr);
     gap: 8px;
+    padding: 8px 0;
+    transition: min-height 160ms ease;
+  }
+
+  .mobile-toolbar-toggle {
+    min-height: 42px;
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+    border: 1px solid #373842;
+    border-radius: 9px;
+    padding: 0 13px;
+    background: #17181e;
+    color: #eeeaf7;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .mobile-toolbar-toggle:hover {
+    border-color: #5a4e78;
+    background: #211e29;
+  }
+
+  .mobile-toolbar-summary {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    width: 100%;
+  }
+
+  .mobile-toolbar-summary strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+
+  .mobile-toolbar-summary span {
+    flex: none;
+    color: #aaa7b5;
+    font-size: 11px;
+    font-weight: 650;
+  }
+
+  .mobile-toolbar-chevron {
+    flex: none;
+    color: #cbbdff;
+    font-size: 17px;
+    line-height: 1;
+  }
+
+  .language-toolbar.is-mobile-collapsed {
+    min-height: 58px;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .language-toolbar.is-mobile-collapsed > :not(.mobile-toolbar-toggle) {
+    display: none !important;
   }
 
   .language-select-group {
@@ -925,8 +998,25 @@ progress::-moz-progress-bar {
   .language-select { width: 100%; }
   .swap-button { align-self: end; }
   .toolbar-spacer { display: none; }
-  .live-mode-toggle { grid-column: span 3; justify-content: center; width: 100%; }
-  .language-toolbar > .button:not(.swap-button) { grid-column: span 3; width: 100%; }
+  .live-mode-toggle {
+    min-height: 36px;
+    grid-column: 1 / -1;
+    justify-content: center;
+    width: 100%;
+  }
+  .toolbar-actions {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .toolbar-actions .button {
+    min-width: 0;
+    width: 100%;
+    padding-inline: 7px;
+    font-size: 12px;
+  }
 
   .compose-grid { min-height: auto; grid-template-columns: 1fr; }
   .editor-pane { min-height: 62vh; border-right: 0; border-bottom: 1px solid var(--border); }

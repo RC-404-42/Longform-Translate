@@ -19,8 +19,11 @@ const SETTINGS_STORAGE_KEY = "longform-translate-settings-v1";
 const DEFAULT_SETTINGS = Object.freeze({
   chineseQuotes: true,
   liveTranslation: false,
+  mobileToolbarCollapsed: false,
+  mobileToolbarPreferenceSet: false,
 });
 const LIVE_TRANSLATION_DELAY = 900;
+const MOBILE_TOOLBAR_MEDIA_QUERY = "(max-width: 720px)";
 const MAX_BATCH_CHARACTERS = 4200;
 const MAX_ITEMS_PER_BATCH = 24;
 const GOOGLE_TRANSLATE_ENDPOINT =
@@ -34,6 +37,11 @@ const FALLBACK_KEY_BYTES = [
 ];
 
 const elements = {
+  languageToolbar: document.querySelector(".language-toolbar"),
+  mobileToolbarToggle: document.querySelector("#mobileToolbarToggle"),
+  mobileToolbarLanguageSummary: document.querySelector("#mobileToolbarLanguageSummary"),
+  mobileToolbarActionText: document.querySelector("#mobileToolbarActionText"),
+  mobileToolbarChevron: document.querySelector("#mobileToolbarChevron"),
   sourceLanguage: document.querySelector("#sourceLanguage"),
   targetLanguage: document.querySelector("#targetLanguage"),
   sourceEditor: document.querySelector("#sourceEditor"),
@@ -594,6 +602,12 @@ function loadSettings() {
         liveTranslation: typeof parsed.liveTranslation === "boolean"
           ? parsed.liveTranslation
           : DEFAULT_SETTINGS.liveTranslation,
+        mobileToolbarCollapsed: typeof parsed.mobileToolbarCollapsed === "boolean"
+          ? parsed.mobileToolbarCollapsed
+          : DEFAULT_SETTINGS.mobileToolbarCollapsed,
+        mobileToolbarPreferenceSet: typeof parsed.mobileToolbarPreferenceSet === "boolean"
+          ? parsed.mobileToolbarPreferenceSet
+          : DEFAULT_SETTINGS.mobileToolbarPreferenceSet,
       };
     }
   } catch {
@@ -766,6 +780,33 @@ function updateLanguageHeadings() {
   elements.targetHeading.textContent = target;
   elements.readingSourceHeading.textContent = source;
   elements.readingTargetHeading.textContent = target;
+  elements.mobileToolbarLanguageSummary.textContent = `${source} → ${target}`;
+}
+
+function persistSettings() {
+  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+}
+
+function setMobileToolbarCollapsed(collapsed, rememberPreference = false) {
+  settings.mobileToolbarCollapsed = collapsed;
+  if (rememberPreference) settings.mobileToolbarPreferenceSet = true;
+  elements.languageToolbar.classList.toggle("is-mobile-collapsed", collapsed);
+  elements.mobileToolbarToggle.setAttribute("aria-expanded", String(!collapsed));
+  elements.mobileToolbarToggle.setAttribute(
+    "aria-label",
+    collapsed ? "展開翻譯設定" : "收合翻譯設定",
+  );
+  elements.mobileToolbarActionText.textContent = collapsed ? "展開" : "收合設定";
+  elements.mobileToolbarChevron.textContent = collapsed ? "⌄" : "⌃";
+  persistSettings();
+}
+
+function maybeAutoCollapseMobileToolbar() {
+  const isMobile = window.matchMedia
+    ? window.matchMedia(MOBILE_TOOLBAR_MEDIA_QUERY).matches
+    : window.innerWidth <= 720;
+  if (!isMobile || settings.mobileToolbarPreferenceSet) return;
+  setMobileToolbarCollapsed(true);
 }
 
 function updateLivePreviewStatus(message, updating = false) {
@@ -952,6 +993,7 @@ function renderParagraphs() {
   elements.translateButton.textContent = "✦ 重新翻譯";
   updateRuleStatus();
   updateStats();
+  maybeAutoCollapseMobileToolbar();
 }
 
 function renderLivePreview() {
@@ -978,6 +1020,7 @@ function renderLivePreview() {
   updateLivePreviewStatus(hasResults ? "已更新" : "等待輸入");
   updateRuleStatus();
   updateStats();
+  if (hasResults) maybeAutoCollapseMobileToolbar();
 }
 
 function renderCurrentResults() {
@@ -1375,6 +1418,9 @@ elements.chineseQuotesToggle.addEventListener("input", (event) => {
 elements.liveTranslationToggle.addEventListener("input", (event) => {
   setLiveTranslation(event.currentTarget.checked);
 });
+elements.mobileToolbarToggle.addEventListener("click", () => {
+  setMobileToolbarCollapsed(!settings.mobileToolbarCollapsed, true);
+});
 elements.addRuleButton.addEventListener("click", () => {
   rules.push(createRule());
   saveRules();
@@ -1393,5 +1439,6 @@ populateLanguages();
 loadRules();
 loadSettings();
 updateLanguageHeadings();
+setMobileToolbarCollapsed(settings.mobileToolbarCollapsed);
 updateRuleStatus();
 resetResult();
