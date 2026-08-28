@@ -11,8 +11,8 @@
     <meta name="theme-color" content="#0d0e12" />
     <title>長文對照翻譯</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="styles.css?v=1.1.5" />
-    <script src="app.js?v=1.1.5" defer></script>
+    <link rel="stylesheet" href="styles.css?v=1.2.0" />
+    <script src="app.js?v=1.2.0" defer></script>
   </head>
   <body>
     <main class="app-shell">
@@ -21,7 +21,7 @@
           <div class="brand-mark" aria-hidden="true">譯</div>
           <div>
             <h1>長文對照翻譯</h1>
-            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.1.5</p>
+            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.2.0</p>
           </div>
         </div>
         <div class="topbar-actions">
@@ -63,6 +63,11 @@
           <select id="targetLanguage" class="language-select" aria-label="譯文語言"></select>
         </label>
         <div class="toolbar-spacer"></div>
+        <label class="live-mode-toggle" title="停止輸入片刻後自動更新譯文">
+          <input id="liveTranslationToggle" type="checkbox" />
+          <span class="switch-track" aria-hidden="true"><span></span></span>
+          <span>即時翻譯</span>
+        </label>
         <button id="copyButton" class="button button-outline result-action" type="button" hidden>
           ▣ 複製譯文
         </button>
@@ -111,12 +116,14 @@
               <span class="pane-kicker">TRANSLATION</span>
               <h2 id="targetHeading">中文</h2>
             </div>
+            <span id="livePreviewStatus" class="pane-stat" hidden>等待輸入</span>
           </div>
-          <div class="empty-preview">
+          <div id="emptyPreview" class="empty-preview">
             <div class="empty-symbol" aria-hidden="true">文</div>
             <h3 id="emptyTitle">譯文會出現在這裡</h3>
-            <p>完成後可懸浮或點擊句子，左右對應內容會同步亮起；點段落空白處則選取整段。</p>
+            <p id="emptyDescription">完成後可懸浮或點擊句子，左右對應內容會同步亮起；點段落空白處則選取整段。</p>
           </div>
+          <div id="livePreview" class="live-preview" aria-label="即時翻譯結果" hidden></div>
           <footer class="pane-footer">
             <span>Google 網頁翻譯</span>
             <span id="rulesStatus">尚無文字處理</span>

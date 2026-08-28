@@ -18,7 +18,9 @@ const RULES_STORAGE_KEY = "longform-translate-rules-v1";
 const SETTINGS_STORAGE_KEY = "longform-translate-settings-v1";
 const DEFAULT_SETTINGS = Object.freeze({
   chineseQuotes: true,
+  liveTranslation: false,
 });
+const LIVE_TRANSLATION_DELAY = 900;
 const MAX_BATCH_CHARACTERS = 4200;
 const MAX_ITEMS_PER_BATCH = 24;
 const GOOGLE_TRANSLATE_ENDPOINT =
@@ -35,6 +37,10 @@ const elements = {
   sourceLanguage: document.querySelector("#sourceLanguage"),
   targetLanguage: document.querySelector("#targetLanguage"),
   sourceEditor: document.querySelector("#sourceEditor"),
+  emptyPreview: document.querySelector("#emptyPreview"),
+  emptyDescription: document.querySelector("#emptyDescription"),
+  livePreview: document.querySelector("#livePreview"),
+  livePreviewStatus: document.querySelector("#livePreviewStatus"),
   sourceHeading: document.querySelector("#sourceHeading"),
   targetHeading: document.querySelector("#targetHeading"),
   readingSourceHeading: document.querySelector("#readingSourceHeading"),
@@ -62,6 +68,7 @@ const elements = {
   rulesButton: document.querySelector("#rulesButton"),
   rulesDialog: document.querySelector("#rulesDialog"),
   chineseQuotesToggle: document.querySelector("#chineseQuotesToggle"),
+  liveTranslationToggle: document.querySelector("#liveTranslationToggle"),
   rulesList: document.querySelector("#rulesList"),
   addRuleButton: document.querySelector("#addRuleButton"),
   importRulesButton: document.querySelector("#importRulesButton"),
@@ -78,6 +85,9 @@ let cachedGoogleKey = null;
 let activeParagraph = null;
 let activeSentence = null;
 let toastTimer = null;
+let liveTranslationTimer = null;
+let liveTranslationVersion = 0;
+const liveTranslationCache = new Map();
 
 function randomId() {
   return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
@@ -568,7 +578,7 @@ function saveRules() {
   localStorage.setItem(RULES_STORAGE_KEY, JSON.stringify(rules));
   reapplyFormatting();
   updateRuleStatus();
-  if (paragraphs.length) renderParagraphs();
+  if (paragraphs.length) renderCurrentResults();
 }
 
 function loadSettings() {
@@ -581,6 +591,9 @@ function loadSettings() {
         chineseQuotes: typeof parsed.chineseQuotes === "boolean"
           ? parsed.chineseQuotes
           : DEFAULT_SETTINGS.chineseQuotes,
+        liveTranslation: typeof parsed.liveTranslation === "boolean"
+          ? parsed.liveTranslation
+          : DEFAULT_SETTINGS.liveTranslation,
       };
     }
   } catch {
@@ -588,13 +601,14 @@ function loadSettings() {
     showToast("內建格式設定讀取失敗，已使用預設值。", "error");
   }
   elements.chineseQuotesToggle.checked = settings.chineseQuotes;
+  elements.liveTranslationToggle.checked = settings.liveTranslation;
 }
 
 function saveSettings() {
   localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
   reapplyFormatting();
   updateRuleStatus();
-  if (paragraphs.length) renderParagraphs();
+  if (paragraphs.length) renderCurrentResults();
 }
 
 function loadRules() {
@@ -754,6 +768,25 @@ function updateLanguageHeadings() {
   elements.readingTargetHeading.textContent = target;
 }
 
+function updateLivePreviewStatus(message, updating = false) {
+  elements.livePreviewStatus.textContent = message;
+  elements.livePreviewStatus.hidden = !settings.liveTranslation;
+  elements.livePreviewStatus.classList.toggle("is-updating", updating);
+}
+
+function clearLivePreview() {
+  elements.livePreview.replaceChildren();
+  elements.livePreview.hidden = true;
+  elements.emptyPreview.hidden = false;
+  elements.emptyTitle.textContent = settings.liveTranslation
+    ? "輸入後會自動翻譯"
+    : "譯文會出現在這裡";
+  elements.emptyDescription.textContent = settings.liveTranslation
+    ? "停止輸入約 0.9 秒後自動更新；只有變動的段落會重新翻譯。"
+    : "完成後可懸浮或點擊句子，左右對應內容會同步亮起；點段落空白處則選取整段。";
+  updateLivePreviewStatus("等待輸入");
+}
+
 function resetResult() {
   paragraphs = [];
   activeParagraph = null;
@@ -762,8 +795,11 @@ function resetResult() {
   elements.composeView.hidden = false;
   elements.copyButton.hidden = true;
   elements.editButton.hidden = true;
-  elements.translateButton.textContent = "✦ 開始翻譯";
+  elements.translateButton.textContent = settings.liveTranslation
+    ? "↻ 立即更新"
+    : "✦ 開始翻譯";
   elements.paragraphPairs.replaceChildren();
+  clearLivePreview();
   updateStats();
 }
 
@@ -771,7 +807,16 @@ function setBusy(busy, completed = 0, total = 0) {
   elements.translateButton.hidden = busy;
   elements.stopButton.hidden = !busy;
   elements.progressStrip.hidden = !busy;
-  elements.emptyTitle.textContent = busy ? "正在整理段落…" : "譯文會出現在這裡";
+  if (!elements.emptyPreview.hidden) {
+    elements.emptyTitle.textContent = busy
+      ? "正在整理段落…"
+      : settings.liveTranslation
+        ? "輸入後會自動翻譯"
+        : "譯文會出現在這裡";
+  }
+  if (settings.liveTranslation && busy) {
+    updateLivePreviewStatus("正在更新…", true);
+  }
   if (busy) updateProgress(completed, total);
 }
 
@@ -909,6 +954,37 @@ function renderParagraphs() {
   updateStats();
 }
 
+function renderLivePreview() {
+  elements.livePreview.replaceChildren();
+  paragraphs.forEach((paragraph) => {
+    const block = document.createElement("div");
+    block.className = "live-paragraph";
+    block.lang = sentenceLocale(
+      elements.targetLanguage.value,
+      paragraph.translation,
+    );
+    block.textContent = paragraph.translation;
+    elements.livePreview.append(block);
+  });
+
+  const hasResults = paragraphs.length > 0;
+  elements.emptyPreview.hidden = hasResults;
+  elements.livePreview.hidden = !hasResults;
+  elements.readingView.hidden = true;
+  elements.composeView.hidden = false;
+  elements.copyButton.hidden = !hasResults;
+  elements.editButton.hidden = true;
+  elements.translateButton.textContent = "↻ 立即更新";
+  updateLivePreviewStatus(hasResults ? "已更新" : "等待輸入");
+  updateRuleStatus();
+  updateStats();
+}
+
+function renderCurrentResults() {
+  if (settings.liveTranslation) renderLivePreview();
+  else renderParagraphs();
+}
+
 function fallbackAlignedSegments(job, translatedText, targetLanguage) {
   const sentenceIds = [...new Set(job.segments.map((segment) => segment.sentenceIndex))];
   const translatedSentences = segmentSentences(translatedText, targetLanguage);
@@ -948,7 +1024,197 @@ function alignedSegmentsForJob(job, translated, targetLanguage) {
   return fallbackAlignedSegments(job, translated.text, targetLanguage);
 }
 
+async function translateSources(
+  sources,
+  sourceLanguage,
+  targetLanguage,
+  signal,
+  onProgress = () => {},
+) {
+  const { sentenceSources, jobs } = createSentenceJobs(sources, sourceLanguage);
+  const batches = makeBatches(jobs);
+  const results = new Map();
+  let nextBatch = 0;
+  let completed = 0;
+  onProgress(0, batches.length);
+
+  const worker = async () => {
+    while (nextBatch < batches.length) {
+      const batchIndex = nextBatch;
+      nextBatch += 1;
+      const batch = batches[batchIndex];
+      const translated = await translateBatch(
+        batch,
+        sourceLanguage,
+        targetLanguage,
+        signal,
+      );
+      batch.forEach((job, index) => {
+        results.set(`${job.paragraphIndex}:${job.partIndex}`, translated[index]);
+      });
+      completed += 1;
+      onProgress(completed, batches.length);
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(3, batches.length) }, () => worker()),
+  );
+
+  const translatedBySentence = new Map();
+  jobs.forEach((job) => {
+    const translated = results.get(`${job.paragraphIndex}:${job.partIndex}`);
+    if (!translated) return;
+    alignedSegmentsForJob(job, translated, targetLanguage).forEach((segment) => {
+      const key = `${job.paragraphIndex}:${segment.sentenceIndex}`;
+      const parts = translatedBySentence.get(key) || [];
+      parts.push(segment.text);
+      translatedBySentence.set(key, parts);
+    });
+  });
+
+  return sources.map((source, paragraphIndex) => {
+    const sentences = sentenceSources[paragraphIndex].map(
+      (sentenceSource, sentenceIndex) => ({
+        id: sentenceIndex,
+        source: sentenceSource,
+        rawTranslation: joinTranslatedParts(
+          translatedBySentence.get(`${paragraphIndex}:${sentenceIndex}`) || [],
+          targetLanguage,
+        ),
+      }),
+    );
+    return {
+      id: paragraphIndex,
+      source,
+      rawTranslation: joinTranslatedParts(
+        sentences.map((sentence) => sentence.rawTranslation),
+        targetLanguage,
+      ).trim(),
+      sentences,
+    };
+  });
+}
+
+function liveCacheKey(source, sourceLanguage, targetLanguage) {
+  return JSON.stringify([sourceLanguage, targetLanguage, source]);
+}
+
+function cacheRawParagraph(key, paragraph) {
+  liveTranslationCache.set(key, {
+    rawTranslation: paragraph.rawTranslation,
+    sentences: paragraph.sentences.map((sentence) => ({ ...sentence })),
+  });
+}
+
+function pruneLiveTranslationCache(activeKeys) {
+  if (liveTranslationCache.size <= 240) return;
+  for (const key of liveTranslationCache.keys()) {
+    if (!activeKeys.has(key)) liveTranslationCache.delete(key);
+    if (liveTranslationCache.size <= 200) break;
+  }
+}
+
+function paragraphFromLiveCache(cached, source, id) {
+  return formatParagraph({
+    id,
+    source,
+    rawTranslation: cached.rawTranslation,
+    sentences: cached.sentences.map((sentence) => ({ ...sentence })),
+  });
+}
+
+async function performLiveTranslation(requestVersion) {
+  if (!settings.liveTranslation || requestVersion !== liveTranslationVersion) return;
+  const sources = parseParagraphs(elements.sourceEditor.value);
+  const sourceLanguage = elements.sourceLanguage.value;
+  const targetLanguage = elements.targetLanguage.value;
+  if (!sources.length) {
+    paragraphs = [];
+    renderLivePreview();
+    return;
+  }
+  if (sourceLanguage === targetLanguage) {
+    updateLivePreviewStatus("語言不可相同");
+    showToast("原文和譯文語言相同，換一邊再翻譯。", "error");
+    return;
+  }
+
+  const missing = new Map();
+  sources.forEach((source) => {
+    const key = liveCacheKey(source, sourceLanguage, targetLanguage);
+    if (!liveTranslationCache.has(key)) missing.set(key, source);
+  });
+
+  const controller = new AbortController();
+  abortController = controller;
+
+  try {
+    if (missing.size) {
+      setBusy(true, 0, 0);
+      const missingEntries = [...missing.entries()];
+      const translated = await translateSources(
+        missingEntries.map(([, source]) => source),
+        sourceLanguage,
+        targetLanguage,
+        controller.signal,
+        (completed, total) => updateProgress(completed, total),
+      );
+      if (requestVersion !== liveTranslationVersion) return;
+      translated.forEach((paragraph, index) => {
+        cacheRawParagraph(missingEntries[index][0], paragraph);
+      });
+    }
+
+    if (requestVersion !== liveTranslationVersion) return;
+    const activeKeys = new Set();
+    paragraphs = sources.map((source, index) => {
+      const key = liveCacheKey(source, sourceLanguage, targetLanguage);
+      activeKeys.add(key);
+      return paragraphFromLiveCache(liveTranslationCache.get(key), source, index);
+    });
+    pruneLiveTranslationCache(activeKeys);
+    renderLivePreview();
+  } catch (error) {
+    if (!(error instanceof DOMException && error.name === "AbortError")) {
+      console.error(error);
+      updateLivePreviewStatus("更新失敗");
+      showToast("即時翻譯暫時沒有回應，請稍後再試一次。", "error");
+    }
+  } finally {
+    if (abortController === controller) {
+      setBusy(false);
+      abortController = null;
+    }
+  }
+}
+
+function scheduleLiveTranslation(immediate = false) {
+  if (!settings.liveTranslation) return;
+  clearTimeout(liveTranslationTimer);
+  liveTranslationVersion += 1;
+  abortController?.abort();
+
+  if (!parseParagraphs(elements.sourceEditor.value).length) {
+    paragraphs = [];
+    renderLivePreview();
+    return;
+  }
+
+  const requestVersion = liveTranslationVersion;
+  updateLivePreviewStatus(immediate ? "準備更新…" : "等待輸入停止…", true);
+  liveTranslationTimer = window.setTimeout(
+    () => performLiveTranslation(requestVersion),
+    immediate ? 0 : LIVE_TRANSLATION_DELAY,
+  );
+}
+
 async function translate() {
+  if (settings.liveTranslation) {
+    scheduleLiveTranslation(true);
+    return;
+  }
+
   const sources = parseParagraphs(elements.sourceEditor.value);
   if (!sources.length) {
     showToast("先放一點原文進來啦，空氣沒辦法翻譯。", "error");
@@ -959,81 +1225,20 @@ async function translate() {
     return;
   }
 
-  const { sentenceSources, jobs } = createSentenceJobs(
-    sources,
-    elements.sourceLanguage.value,
-  );
-  const batches = makeBatches(jobs);
-  abortController = new AbortController();
+  const controller = new AbortController();
+  abortController = controller;
   paragraphs = [];
-  setBusy(true, 0, batches.length);
+  setBusy(true, 0, 0);
 
   try {
-    const results = new Map();
-    let nextBatch = 0;
-    let completed = 0;
-
-    const worker = async () => {
-      while (nextBatch < batches.length) {
-        const batchIndex = nextBatch;
-        nextBatch += 1;
-        const batch = batches[batchIndex];
-        const translated = await translateBatch(
-          batch,
-          elements.sourceLanguage.value,
-          elements.targetLanguage.value,
-          abortController.signal,
-        );
-        batch.forEach((job, index) => {
-          results.set(`${job.paragraphIndex}:${job.partIndex}`, translated[index]);
-        });
-        completed += 1;
-        updateProgress(completed, batches.length);
-      }
-    };
-
-    await Promise.all(
-      Array.from({ length: Math.min(3, batches.length) }, () => worker()),
+    const rawParagraphs = await translateSources(
+      sources,
+      elements.sourceLanguage.value,
+      elements.targetLanguage.value,
+      controller.signal,
+      (completed, total) => updateProgress(completed, total),
     );
-
-    const translatedBySentence = new Map();
-    jobs.forEach((job) => {
-      const translated = results.get(`${job.paragraphIndex}:${job.partIndex}`);
-      if (!translated) return;
-      alignedSegmentsForJob(
-        job,
-        translated,
-        elements.targetLanguage.value,
-      ).forEach((segment) => {
-        const key = `${job.paragraphIndex}:${segment.sentenceIndex}`;
-        const parts = translatedBySentence.get(key) || [];
-        parts.push(segment.text);
-        translatedBySentence.set(key, parts);
-      });
-    });
-
-    paragraphs = sources.map((source, paragraphIndex) => {
-      const sentences = sentenceSources[paragraphIndex].map(
-        (sentenceSource, sentenceIndex) => ({
-          id: sentenceIndex,
-          source: sentenceSource,
-          rawTranslation: joinTranslatedParts(
-            translatedBySentence.get(`${paragraphIndex}:${sentenceIndex}`) || [],
-            elements.targetLanguage.value,
-          ),
-        }),
-      );
-      const paragraph = {
-        id: paragraphIndex,
-        source,
-        rawTranslation: joinTranslatedParts(
-          sentences.map((sentence) => sentence.rawTranslation),
-          elements.targetLanguage.value,
-        ).trim(),
-        sentences,
-      };
-      return formatParagraph(paragraph);
-    });
+    paragraphs = rawParagraphs.map((paragraph) => formatParagraph(paragraph));
     renderParagraphs();
     const sentenceCount = paragraphs.reduce(
       (total, paragraph) => total + paragraph.sentences.length,
@@ -1048,8 +1253,10 @@ async function translate() {
       showToast("免費 Google 翻譯暫時沒有回應，請稍後再試一次。", "error");
     }
   } finally {
-    setBusy(false);
-    abortController = null;
+    if (abortController === controller) {
+      setBusy(false);
+      abortController = null;
+    }
   }
 }
 
@@ -1087,17 +1294,43 @@ function importRules(file) {
   reader.readAsText(file);
 }
 
-elements.sourceEditor.addEventListener("input", updateStats);
+function setLiveTranslation(enabled) {
+  clearTimeout(liveTranslationTimer);
+  liveTranslationVersion += 1;
+  abortController?.abort();
+  paragraphs = [];
+  settings.liveTranslation = enabled;
+  saveSettings();
+  resetResult();
+  if (enabled) scheduleLiveTranslation(true);
+  showToast(enabled ? "即時翻譯已開啟。" : "即時翻譯已關閉。");
+}
+
+elements.sourceEditor.addEventListener("input", () => {
+  updateStats();
+  scheduleLiveTranslation();
+});
 elements.sourceLanguage.addEventListener("change", () => {
+  liveTranslationCache.clear();
   updateLanguageHeadings();
   resetResult();
+  scheduleLiveTranslation(true);
 });
 elements.targetLanguage.addEventListener("change", () => {
+  liveTranslationCache.clear();
   updateLanguageHeadings();
   resetResult();
+  scheduleLiveTranslation(true);
 });
 elements.translateButton.addEventListener("click", translate);
-elements.stopButton.addEventListener("click", () => abortController?.abort());
+elements.stopButton.addEventListener("click", () => {
+  clearTimeout(liveTranslationTimer);
+  if (settings.liveTranslation) {
+    liveTranslationVersion += 1;
+    updateLivePreviewStatus("已停止");
+  }
+  abortController?.abort();
+});
 elements.editButton.addEventListener("click", resetResult);
 elements.copyButton.addEventListener("click", async () => {
   await navigator.clipboard.writeText(
@@ -1106,6 +1339,9 @@ elements.copyButton.addEventListener("click", async () => {
   showToast("譯文已複製。");
 });
 elements.clearButton.addEventListener("click", () => {
+  clearTimeout(liveTranslationTimer);
+  liveTranslationVersion += 1;
+  liveTranslationCache.clear();
   abortController?.abort();
   elements.sourceEditor.value = "";
   resetResult();
@@ -1122,8 +1358,10 @@ elements.swapButton.addEventListener("click", () => {
       .map((paragraph) => paragraph.translation)
       .join("\n\n");
   }
+  liveTranslationCache.clear();
   updateLanguageHeadings();
   resetResult();
+  scheduleLiveTranslation(true);
 });
 
 elements.rulesButton.addEventListener("click", () => {
@@ -1133,6 +1371,9 @@ elements.rulesButton.addEventListener("click", () => {
 elements.chineseQuotesToggle.addEventListener("input", (event) => {
   settings.chineseQuotes = event.currentTarget.checked;
   saveSettings();
+});
+elements.liveTranslationToggle.addEventListener("input", (event) => {
+  setLiveTranslation(event.currentTarget.checked);
 });
 elements.addRuleButton.addEventListener("click", () => {
   rules.push(createRule());
@@ -1153,4 +1394,4 @@ loadRules();
 loadSettings();
 updateLanguageHeadings();
 updateRuleStatus();
-updateStats();
+resetResult();
