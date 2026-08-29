@@ -4,7 +4,7 @@
 
 可直開啟使用的純靜態長文翻譯工具，使用 GitHub Pages 託管運行。不需要安裝套件、設定伺服器或申請 API Key。
 
-目前版本：**v1.2.1**
+目前版本：**v1.2.3**
 
 
 ## 功能
@@ -17,6 +17,7 @@
 - 規則儲存在瀏覽器本機，支援 JSON 匯入及匯出。
 - 一鍵複製完整譯文、交換語言及中止翻譯。
 - 可開啟即時翻譯，一邊編輯原文、一邊自動更新旁邊的譯文。
+- 提供一致的瀏覽器分頁、書籤、iPhone 主畫面與 PWA 圖示。
 
 
 ## 注意事項
@@ -29,6 +30,14 @@
 
 
 ## 版本歷史
+
+### v1.2.3
+- 精簡圖示檔案，讓 favicon、書籤與 iPhone 主畫面共用同一張圖。
+- 保留 PWA 必要的 192px 與 512px 圖示，部署包縮減為 7 個檔案。
+
+### v1.2.2
+- 更換網站 favicon 與 PWA 圖示，配色調整為介面的深紫色系。
+- 新增 Web App Manifest 與 iPhone 主畫面圖示。
 
 ### v1.2.1
 - 新增手機版翻譯工具列收合功能，完成翻譯後會自動收合。
@@ -63,7 +72,7 @@
 ## 部署到 GitHub Pages
 
 1. 在 GitHub 建立一個新的 repository。
-2. 把這個資料夾內的 `index.html`、`styles.css`、`app.js`、`favicon.svg` 上傳到 repository 根目錄。
+2. 把這個資料夾內的所有檔案上傳到 repository 根目錄。
 3. 進入 repository 的 **Settings → Pages**。
 4. 在 **Build and deployment** 選擇 **Deploy from a branch**。
 5. Branch 選擇 `main`，資料夾選擇 `/ (root)`，按下 **Save**。
