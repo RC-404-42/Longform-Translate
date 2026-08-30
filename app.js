@@ -768,6 +768,7 @@ function moveRule(index, direction) {
 
 function updateStats() {
   const text = elements.sourceEditor.value;
+  elements.sourceEditor.lang = sentenceLocale(elements.sourceLanguage.value, text);
   elements.characterStat.textContent = `${Array.from(text).length.toLocaleString()} 字元`;
   elements.paragraphStat.textContent = `${parseParagraphs(text).length} 段`;
   elements.clearButton.disabled = !text && !paragraphs.length;

@@ -446,8 +446,17 @@ progress::-moz-progress-bar {
   padding: 22px 24px 36px;
   background: #111217;
   color: #e9e8ee;
+  font-family: var(--reading-font);
+  font-kerning: normal;
   font-size: 16px;
   line-height: 1.85;
+}
+
+.source-editor:lang(zh),
+.source-editor:lang(ja),
+.source-editor:lang(ko) {
+  font-family: var(--font);
+  font-kerning: none;
 }
 
 .source-editor::placeholder {
