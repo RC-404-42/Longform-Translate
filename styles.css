@@ -1079,9 +1079,9 @@ progress::-moz-progress-bar {
   .reading-headings { display: none; }
   .paragraph-pairs { padding: 8px; }
   .paragraph-pair {
-    grid-template-columns: 4ch minmax(0, 1fr);
+    grid-template-columns: 17px minmax(0, 1fr);
     grid-template-rows: auto 9px auto;
-    column-gap: 6px;
+    column-gap: 3px;
   }
   .paragraph-pair + .paragraph-pair { margin-top: 18px; }
   .paragraph-card { padding: 15px; font-size: 14px; line-height: 1.72; }
@@ -1106,16 +1106,22 @@ progress::-moz-progress-bar {
   .pair-connector::before { display: none; }
   .pair-connector span,
   .paragraph-pair.is-active .pair-connector span {
+    display: block;
     min-width: 0;
+    max-width: 100%;
     height: auto;
+    margin-top: 6px;
     border: 0;
     border-radius: 0;
     padding: 0;
     background: none;
     box-shadow: none;
     color: var(--muted);
-    font-size: 11px;
-    line-height: 24px;
+    font-size: 10px;
+    line-height: 12px;
+    letter-spacing: -.4px;
+    overflow-wrap: anywhere;
+    text-align: right;
   }
   .paragraph-pair.is-active .pair-connector span { color: #cbbdff; }
   .reading-footer, .pane-footer, .app-footer { align-items: flex-start; flex-direction: column; justify-content: center; padding-block: 10px; }
