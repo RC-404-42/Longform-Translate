@@ -258,7 +258,8 @@ input:focus-visible,
   gap: 10px;
 }
 
-.mobile-toolbar-toggle {
+.mobile-toolbar-row,
+.mobile-header-icon {
   display: none;
 }
 
@@ -928,9 +929,37 @@ progress::-moz-progress-bar {
 
 @media (max-width: 720px) {
   .app-shell { padding: 0 10px 18px; }
-  .topbar { min-height: 68px; }
+  .topbar { min-height: 68px; gap: 8px; }
   .brand-lockup p { display: none; }
   .brand-mark { width: 36px; height: 36px; }
+  .topbar-actions { flex: none; gap: 6px; }
+  .topbar-actions .button {
+    position: relative;
+    width: 44px;
+    min-height: 44px;
+    padding: 0;
+  }
+  .desktop-header-icon { display: none; }
+  .mobile-header-icon { display: block; }
+  .header-action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .topbar-actions .rule-count {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    background: #302944;
+    font-size: 9px;
+    line-height: 1;
+  }
 
   .language-toolbar {
     min-height: 0;
@@ -941,17 +970,31 @@ progress::-moz-progress-bar {
     transition: min-height 160ms ease;
   }
 
-  .mobile-toolbar-toggle {
-    min-height: 42px;
+  .mobile-toolbar-row {
     grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 98px;
+    gap: 8px;
+  }
+
+  .mobile-toolbar-row .button {
+    min-height: 44px;
+    gap: 5px;
+    padding: 0 7px;
+    white-space: nowrap;
+  }
+
+  .mobile-toolbar-toggle {
+    min-width: 0;
+    min-height: 44px;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 6px;
     width: 100%;
     border: 1px solid #373842;
     border-radius: 9px;
-    padding: 0 13px;
+    padding: 0 10px;
     background: #17181e;
     color: #eeeaf7;
     cursor: pointer;
@@ -968,7 +1011,7 @@ progress::-moz-progress-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 12px;
+    gap: 6px;
     width: 100%;
   }
 
@@ -993,12 +1036,8 @@ progress::-moz-progress-bar {
     line-height: 1;
   }
 
-  .language-toolbar.is-mobile-collapsed {
-    min-height: 58px;
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .language-toolbar.is-mobile-collapsed > :not(.mobile-toolbar-toggle) {
+  .language-toolbar.is-mobile-collapsed > :not(.mobile-toolbar-row),
+  .toolbar-actions > :is(#translateButton, #stopButton) {
     display: none !important;
   }
 
@@ -1024,6 +1063,7 @@ progress::-moz-progress-bar {
     gap: 8px;
     width: 100%;
   }
+  .toolbar-actions:not(:has(> .result-action:not([hidden]))) { display: none; }
   .toolbar-actions .button {
     min-width: 0;
     width: 100%;
@@ -1038,14 +1078,46 @@ progress::-moz-progress-bar {
   .live-preview { padding: 18px; }
   .reading-headings { display: none; }
   .paragraph-pairs { padding: 8px; }
-  .paragraph-pair { grid-template-columns: 1fr; }
+  .paragraph-pair {
+    grid-template-columns: 4ch minmax(0, 1fr);
+    grid-template-rows: auto 9px auto;
+    column-gap: 6px;
+  }
   .paragraph-pair + .paragraph-pair { margin-top: 18px; }
   .paragraph-card { padding: 15px; font-size: 14px; line-height: 1.72; }
-  .source-card { border-color: #272830; border-radius: 9px 9px 3px 9px; background: #14151a; }
-  .translation-card { border-color: #332d42; border-radius: 3px 9px 9px 9px; background: #191720; }
-  .pair-connector { height: 30px; }
-  .pair-connector::before { inset: 0 50%; }
-  .pair-connector span { min-width: 22px; height: 22px; }
+  .source-card { grid-area: 1 / 2; border-color: #272830; background: #14151a; }
+  .translation-card { grid-area: 3 / 2; border-color: #332d42; background: #191720; }
+  .paragraph-pair::after {
+    content: "";
+    grid-area: 2 / 2;
+    align-self: center;
+    height: 1px;
+    margin-inline: 6px;
+    background: #35343f;
+    pointer-events: none;
+  }
+  .paragraph-pair.is-active::after { background: #685686; }
+  .pair-connector {
+    grid-area: 1 / 1;
+    place-items: start end;
+    padding-top: 16px;
+    pointer-events: none;
+  }
+  .pair-connector::before { display: none; }
+  .pair-connector span,
+  .paragraph-pair.is-active .pair-connector span {
+    min-width: 0;
+    height: auto;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    background: none;
+    box-shadow: none;
+    color: var(--muted);
+    font-size: 11px;
+    line-height: 24px;
+  }
+  .paragraph-pair.is-active .pair-connector span { color: #cbbdff; }
   .reading-footer, .pane-footer, .app-footer { align-items: flex-start; flex-direction: column; justify-content: center; padding-block: 10px; }
 
   .progress-strip { grid-template-columns: 1fr 36px; }

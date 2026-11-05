@@ -42,6 +42,9 @@ const elements = {
   mobileToolbarLanguageSummary: document.querySelector("#mobileToolbarLanguageSummary"),
   mobileToolbarActionText: document.querySelector("#mobileToolbarActionText"),
   mobileToolbarChevron: document.querySelector("#mobileToolbarChevron"),
+  mobileTranslateButton: document.querySelector("#mobileTranslateButton"),
+  mobileTranslateIcon: document.querySelector("#mobileTranslateIcon"),
+  mobileTranslateLabel: document.querySelector("#mobileTranslateLabel"),
   sourceLanguage: document.querySelector("#sourceLanguage"),
   targetLanguage: document.querySelector("#targetLanguage"),
   sourceEditor: document.querySelector("#sourceEditor"),
@@ -797,7 +800,7 @@ function setMobileToolbarCollapsed(collapsed, rememberPreference = false) {
     "aria-label",
     collapsed ? "展開翻譯設定" : "收合翻譯設定",
   );
-  elements.mobileToolbarActionText.textContent = collapsed ? "展開" : "收合設定";
+  elements.mobileToolbarActionText.textContent = collapsed ? "展開" : "收合";
   elements.mobileToolbarChevron.textContent = collapsed ? "⌄" : "⌃";
   persistSettings();
 }
@@ -808,6 +811,24 @@ function maybeAutoCollapseMobileToolbar() {
     : window.innerWidth <= 720;
   if (!isMobile || settings.mobileToolbarPreferenceSet) return;
   setMobileToolbarCollapsed(true);
+}
+
+function updateMobileTranslateButton() {
+  const busy = elements.translateButton.hidden;
+  const [icon, label, fullLabel = label] = busy
+    ? ["×", "停止", "停止翻譯"]
+    : settings.liveTranslation
+      ? ["↻", "立即更新"]
+      : elements.readingView.hidden
+        ? ["✦", "翻譯", "開始翻譯"]
+        : ["↻", "重新翻譯"];
+
+  elements.mobileTranslateIcon.textContent = icon;
+  elements.mobileTranslateLabel.textContent = label;
+  elements.mobileTranslateButton.setAttribute("aria-label", fullLabel);
+  elements.mobileTranslateButton.title = fullLabel;
+  elements.mobileTranslateButton.classList.toggle("button-primary", !busy);
+  elements.mobileTranslateButton.classList.toggle("button-danger", busy);
 }
 
 function updateLivePreviewStatus(message, updating = false) {
@@ -840,6 +861,7 @@ function resetResult() {
   elements.translateButton.textContent = settings.liveTranslation
     ? "↻ 立即更新"
     : "✦ 開始翻譯";
+  updateMobileTranslateButton();
   elements.paragraphPairs.replaceChildren();
   clearLivePreview();
   updateStats();
@@ -849,6 +871,7 @@ function setBusy(busy, completed = 0, total = 0) {
   elements.translateButton.hidden = busy;
   elements.stopButton.hidden = !busy;
   elements.progressStrip.hidden = !busy;
+  updateMobileTranslateButton();
   if (!elements.emptyPreview.hidden) {
     elements.emptyTitle.textContent = busy
       ? "正在整理段落…"
@@ -992,6 +1015,7 @@ function renderParagraphs() {
   elements.copyButton.hidden = false;
   elements.editButton.hidden = false;
   elements.translateButton.textContent = "✦ 重新翻譯";
+  updateMobileTranslateButton();
   updateRuleStatus();
   updateStats();
   maybeAutoCollapseMobileToolbar();
@@ -1018,6 +1042,7 @@ function renderLivePreview() {
   elements.copyButton.hidden = !hasResults;
   elements.editButton.hidden = true;
   elements.translateButton.textContent = "↻ 立即更新";
+  updateMobileTranslateButton();
   updateLivePreviewStatus(hasResults ? "已更新" : "等待輸入");
   updateRuleStatus();
   updateStats();
@@ -1366,14 +1391,20 @@ elements.targetLanguage.addEventListener("change", () => {
   resetResult();
   scheduleLiveTranslation(true);
 });
-elements.translateButton.addEventListener("click", translate);
-elements.stopButton.addEventListener("click", () => {
+function stopTranslation() {
   clearTimeout(liveTranslationTimer);
   if (settings.liveTranslation) {
     liveTranslationVersion += 1;
     updateLivePreviewStatus("已停止");
   }
   abortController?.abort();
+}
+
+elements.translateButton.addEventListener("click", translate);
+elements.stopButton.addEventListener("click", stopTranslation);
+elements.mobileTranslateButton.addEventListener("click", () => {
+  if (elements.translateButton.hidden) stopTranslation();
+  else translate();
 });
 elements.editButton.addEventListener("click", resetResult);
 elements.copyButton.addEventListener("click", async () => {
