@@ -69,7 +69,7 @@ const elements = {
   stopButton: document.querySelector("#stopButton"),
   copyButton: document.querySelector("#copyButton"),
   editButton: document.querySelector("#editButton"),
-  clearButton: document.querySelector("#clearButton"),
+  clearButtons: document.querySelectorAll("[data-clear-all]"),
   swapButton: document.querySelector("#swapButton"),
   progressStrip: document.querySelector("#progressStrip"),
   progressText: document.querySelector("#progressText"),
@@ -774,7 +774,9 @@ function updateStats() {
   elements.sourceEditor.lang = sentenceLocale(elements.sourceLanguage.value, text);
   elements.characterStat.textContent = `${Array.from(text).length.toLocaleString()} 字元`;
   elements.paragraphStat.textContent = `${parseParagraphs(text).length} 段`;
-  elements.clearButton.disabled = !text && !paragraphs.length;
+  elements.clearButtons.forEach((button) => {
+    button.disabled = !text && !paragraphs.length;
+  });
 }
 
 function updateLanguageHeadings() {
@@ -1413,14 +1415,19 @@ elements.copyButton.addEventListener("click", async () => {
   );
   showToast("譯文已複製。");
 });
-elements.clearButton.addEventListener("click", () => {
+function clearAll() {
   clearTimeout(liveTranslationTimer);
   liveTranslationVersion += 1;
   liveTranslationCache.clear();
   abortController?.abort();
+  abortController = null;
+  setBusy(false);
   elements.sourceEditor.value = "";
   resetResult();
-});
+  elements.sourceEditor.focus({ preventScroll: true });
+  window.scrollTo({ top: 0, behavior: "auto" });
+}
+elements.clearButtons.forEach((button) => button.addEventListener("click", clearAll));
 elements.swapButton.addEventListener("click", () => {
   const nextSource = elements.targetLanguage.value;
   const nextTarget = elements.sourceLanguage.value === "auto"

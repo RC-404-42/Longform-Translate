@@ -973,7 +973,7 @@ progress::-moz-progress-bar {
   .mobile-toolbar-row {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 98px;
+    grid-template-columns: minmax(0, 1fr) 98px 44px;
     gap: 8px;
   }
 
@@ -1037,7 +1037,7 @@ progress::-moz-progress-bar {
   }
 
   .language-toolbar.is-mobile-collapsed > :not(.mobile-toolbar-row),
-  .toolbar-actions > :is(#translateButton, #stopButton) {
+  .toolbar-actions > :is(#translateButton, #stopButton, #toolbarClearButton) {
     display: none !important;
   }
 
@@ -1098,9 +1098,11 @@ progress::-moz-progress-bar {
   }
   .paragraph-pair.is-active::after { background: #685686; }
   .pair-connector {
-    grid-area: 1 / 1;
-    place-items: start end;
-    padding-top: 16px;
+    grid-area: 2 / 1;
+    place-items: center end;
+    align-content: center;
+    min-height: 0;
+    padding-top: 0;
     pointer-events: none;
   }
   .pair-connector::before { display: none; }
@@ -1110,7 +1112,7 @@ progress::-moz-progress-bar {
     min-width: 0;
     max-width: 100%;
     height: auto;
-    margin-top: 6px;
+    margin-top: 0;
     border: 0;
     border-radius: 0;
     padding: 0;
@@ -1136,6 +1138,10 @@ progress::-moz-progress-bar {
   .dialog-footer { align-items: stretch; flex-direction: column; }
   .dialog-footer-group { width: 100%; }
   .dialog-footer-group .button { flex: 1; }
+}
+
+@media (max-width: 360px) {
+  .mobile-toolbar-summary > span { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
