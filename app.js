@@ -44,7 +44,6 @@ const elements = {
   mobileToolbarChevron: document.querySelector("#mobileToolbarChevron"),
   mobileTranslateButton: document.querySelector("#mobileTranslateButton"),
   mobileTranslateIcon: document.querySelector("#mobileTranslateIcon"),
-  mobileTranslateLabel: document.querySelector("#mobileTranslateLabel"),
   sourceLanguage: document.querySelector("#sourceLanguage"),
   targetLanguage: document.querySelector("#targetLanguage"),
   sourceEditor: document.querySelector("#sourceEditor"),
@@ -817,16 +816,20 @@ function maybeAutoCollapseMobileToolbar() {
 
 function updateMobileTranslateButton() {
   const busy = elements.translateButton.hidden;
-  const [icon, label, fullLabel = label] = busy
-    ? ["×", "停止", "停止翻譯"]
+  const [icon, fullLabel] = busy
+    ? ["stop", "停止翻譯"]
     : settings.liveTranslation
-      ? ["↻", "立即更新"]
+      ? ["refresh", "立即更新"]
       : elements.readingView.hidden
-        ? ["✦", "翻譯", "開始翻譯"]
-        : ["↻", "重新翻譯"];
+        ? ["translate", "開始翻譯"]
+        : ["refresh", "重新翻譯"];
 
-  elements.mobileTranslateIcon.textContent = icon;
-  elements.mobileTranslateLabel.textContent = label;
+  const paths = {
+    translate: "M3 6h12M9 3v3m-4 0c1 5 4 8 9 10M13 6c-1 5-4 8-10 10m11 5 4-10 4 10m-6-4h4",
+    refresh: "M20 4v6h-6M4 20v-6h6M5 8a8 8 0 0 1 13-3l2 5M4 14l2 5a8 8 0 0 0 13-3",
+    stop: "M7 7h10v10H7z",
+  };
+  elements.mobileTranslateIcon.setAttribute("d", paths[icon]);
   elements.mobileTranslateButton.setAttribute("aria-label", fullLabel);
   elements.mobileTranslateButton.title = fullLabel;
   elements.mobileTranslateButton.classList.toggle("button-primary", !busy);

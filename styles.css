@@ -973,7 +973,7 @@ progress::-moz-progress-bar {
   .mobile-toolbar-row {
     grid-column: 1 / -1;
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 98px 44px;
+    grid-template-columns: minmax(0, 1fr) 44px 44px;
     gap: 8px;
   }
 
