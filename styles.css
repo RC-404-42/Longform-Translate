@@ -263,6 +263,21 @@ input:focus-visible,
   display: none;
 }
 
+.translation-modes {
+  display: flex;
+  flex: none;
+  gap: 8px;
+}
+
+.translation-modes .live-mode-toggle {
+  white-space: nowrap;
+}
+
+.live-mode-toggle:has(input:disabled) {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
 .live-mode-toggle {
   min-height: 38px;
   display: inline-flex;
@@ -927,6 +942,13 @@ progress::-moz-progress-bar {
   .compose-grid { min-height: 720px; }
 }
 
+@media (min-width: 721px) and (max-width: 1150px) {
+  .language-select { width: clamp(95px, 12vw, 140px); }
+  .language-toolbar { gap: 6px; flex-wrap: wrap; }
+  .toolbar-spacer { min-width: 0; }
+  .toolbar-actions { gap: 6px; }
+}
+
 @media (max-width: 720px) {
   .app-shell { padding: 0 10px 18px; }
   .topbar { min-height: 68px; gap: 8px; }
@@ -1050,6 +1072,7 @@ progress::-moz-progress-bar {
   .language-select { width: 100%; }
   .swap-button { align-self: end; }
   .toolbar-spacer { display: none; }
+  .translation-modes { grid-column: 1 / -1; }
   .live-mode-toggle {
     min-height: 36px;
     grid-column: 1 / -1;
@@ -1097,6 +1120,9 @@ progress::-moz-progress-bar {
     pointer-events: none;
   }
   .paragraph-pair.is-active::after { background: #685686; }
+  .paragraph-pair.is-source-only { grid-template-rows: auto; }
+  .paragraph-pair.is-source-only::after { content: none; }
+  .paragraph-pair.is-source-only .pair-connector { grid-row: 1; }
   .pair-connector {
     grid-area: 2 / 1;
     place-items: center end;

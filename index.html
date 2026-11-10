@@ -17,8 +17,8 @@
     <link rel="icon" href="icon.png?v=1.2.5" type="image/png" />
     <link rel="apple-touch-icon" href="icon.png?v=1.2.5" />
     <link rel="manifest" href="manifest.webmanifest?v=1.2.5" />
-    <link rel="stylesheet" href="styles.css?v=1.2.8" />
-    <script src="app.js?v=1.2.8" defer></script>
+    <link rel="stylesheet" href="styles.css?v=1.2.9" />
+    <script src="app.js?v=1.2.9" defer></script>
   </head>
   <body>
     <main class="app-shell">
@@ -29,7 +29,7 @@
           </div>
           <div>
             <h1>長文對照翻譯</h1>
-            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.2.8</p>
+            <p>免費 Google 網頁翻譯 · 不需金鑰 · v1.2.9</p>
           </div>
         </div>
         <div class="topbar-actions">
@@ -89,11 +89,18 @@
           <select id="targetLanguage" class="language-select" aria-label="譯文語言"></select>
         </label>
         <div class="toolbar-spacer"></div>
-        <label class="live-mode-toggle" title="停止輸入片刻後自動更新譯文">
-          <input id="liveTranslationToggle" type="checkbox" />
-          <span class="switch-track" aria-hidden="true"><span></span></span>
-          <span>即時翻譯</span>
-        </label>
+        <div class="translation-modes">
+          <label class="live-mode-toggle" title="停止輸入片刻後自動更新譯文">
+            <input id="liveTranslationToggle" type="checkbox" />
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+            <span>即時翻譯</span>
+          </label>
+          <label class="live-mode-toggle" title="譯文選中文時可用：自動辨識外語，保留原有中文">
+            <input id="foreignOnlyToggle" type="checkbox" />
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+            <span>只翻外語</span>
+          </label>
+        </div>
         <div class="toolbar-actions">
           <button id="copyButton" class="button button-outline result-action" type="button" hidden>
             ▣ 複製譯文

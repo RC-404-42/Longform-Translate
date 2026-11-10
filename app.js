@@ -19,6 +19,7 @@ const SETTINGS_STORAGE_KEY = "longform-translate-settings-v1";
 const DEFAULT_SETTINGS = Object.freeze({
   chineseQuotes: true,
   liveTranslation: false,
+  foreignOnly: false,
   mobileToolbarCollapsed: false,
   mobileToolbarPreferenceSet: false,
 });
@@ -79,6 +80,7 @@ const elements = {
   rulesDialog: document.querySelector("#rulesDialog"),
   chineseQuotesToggle: document.querySelector("#chineseQuotesToggle"),
   liveTranslationToggle: document.querySelector("#liveTranslationToggle"),
+  foreignOnlyToggle: document.querySelector("#foreignOnlyToggle"),
   rulesList: document.querySelector("#rulesList"),
   addRuleButton: document.querySelector("#addRuleButton"),
   importRulesButton: document.querySelector("#importRulesButton"),
@@ -218,6 +220,77 @@ function segmentSentences(text, language = "auto") {
   return fallbackSentenceSegments(text);
 }
 
+const HAN = /\p{Script=Han}/u;
+const JAPANESE_OR_KOREAN = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
+const SHORT_FOREIGN_REPLIES = /^(?:yes|no|okay|ok|fine|hey|hello|thanks|sorry|what|why|wait|stop|please|never|sure|bonjour|merci|oui|non|hola|gracias|sí|nein|danke|ciao|grazie|obrigad[oa])$/iu;
+
+function isForeignText(text) {
+  const letters = text.match(/\p{L}/gu) || [];
+  if (!letters.length) return false;
+  if (HAN.test(text)) {
+    const kanaOrHangul = text.match(JAPANESE_OR_KOREAN)?.length || 0;
+    return kanaOrHangul >= 2 && kanaOrHangul / letters.length >= 0.22;
+  }
+  if (letters.some((letter) => !/\p{Script=Latin}/u.test(letter))) return true;
+
+  const words = text.match(/\p{Script=Latin}[\p{Script=Latin}\p{M}]*(?:[’'-]\p{Script=Latin}[\p{Script=Latin}\p{M}]*)*/gu) || [];
+  if (words.some((word) => SHORT_FOREIGN_REPLIES.test(word))) return true;
+  if (words.length === 1) return /(?:n[’']t|[’'](?:m|re|ve|ll|d))$/iu.test(words[0]);
+  // Avoid sending a standalone name such as “Marshall Nolen”.
+  return words.length > 4 || words.slice(1).some((word) => /^\p{Ll}/u.test(word))
+    || (words.length > 1 && words.some((word) => /^(?:i|you|we|they|he|she|it|is|am|are|do|can|will)$/iu.test(word)));
+}
+
+function segmentWithLeadingSpace(text) {
+  const leading = text.match(/^\s*/u)[0];
+  const pieces = segmentSentences(text.slice(leading.length));
+  if (!pieces.length) return text ? [text] : [];
+  pieces[0] = leading + pieces[0];
+  return pieces;
+}
+
+function unquotedForeignParts(text) {
+  return segmentWithLeadingSpace(text).flatMap((sentence) => {
+    if (HAN.test(sentence)) {
+      for (const match of sentence.matchAll(/[：:]/gu)) {
+        const split = match.index + 1;
+        const head = sentence.slice(0, split);
+        const tail = sentence.slice(split);
+        if (HAN.test(head) && isForeignText(tail)) {
+          return [
+            { source: head, preserved: true },
+            { source: tail, preserved: false },
+          ];
+        }
+      }
+    }
+    return [{ source: sentence, preserved: !isForeignText(sentence) }];
+  });
+}
+
+function foreignOnlySentenceParts(text) {
+  if (!HAN.test(text)) return unquotedForeignParts(text);
+  const parts = [];
+  let cursor = 0;
+  // Extract complete quotes before sentence segmentation so dialogue can span sentences.
+  for (const match of text.matchAll(/「[^「」]+」|『[^『』]+』|“[^“”]+”|"[^"\n]+"/gu)) {
+    const quote = match[0];
+    const inner = quote.slice(1, -1);
+    if (!isForeignText(inner)) continue;
+    parts.push(...unquotedForeignParts(text.slice(cursor, match.index)));
+    parts.push({ source: quote[0], preserved: true });
+    parts.push(...unquotedForeignParts(inner));
+    parts.push({ source: quote.at(-1), preserved: true });
+    cursor = match.index + quote.length;
+  }
+  parts.push(...unquotedForeignParts(text.slice(cursor)));
+  return parts;
+}
+
+function foreignOnlyEnabled(targetLanguage = elements.targetLanguage.value) {
+  return settings.foreignOnly && targetLanguage === "zh-TW";
+}
+
 function splitLongText(text, maxLength = MAX_BATCH_CHARACTERS) {
   const characters = Array.from(text);
   if (characters.length <= maxLength) return [text];
@@ -252,20 +325,14 @@ function splitLongText(text, maxLength = MAX_BATCH_CHARACTERS) {
   return parts.filter(Boolean);
 }
 
-function createSentenceJobs(sources, sourceLanguage) {
-  const sentenceSources = sources.map((source) =>
-    segmentSentences(source, sourceLanguage),
+function createSentenceJobs(sources, sourceLanguage, foreignOnly = false) {
+  const sentenceSources = sources.map((source) => foreignOnly
+    ? foreignOnlySentenceParts(source)
+    : segmentSentences(source, sourceLanguage).map((sentence) => ({ source: sentence })),
   );
   const jobs = [];
 
   sentenceSources.forEach((sentences, paragraphIndex) => {
-    const fragments = sentences.flatMap((text, sentenceIndex) =>
-      splitLongText(text).map((fragment, fragmentIndex) => ({
-        sentenceIndex,
-        fragmentIndex,
-        text: fragment,
-      })),
-    );
     let current = [];
     let currentLength = 0;
     let partIndex = 0;
@@ -283,11 +350,17 @@ function createSentenceJobs(sources, sourceLanguage) {
       currentLength = 0;
     };
 
-    fragments.forEach((fragment) => {
-      const length = Array.from(fragment.text).length;
-      if (current.length && currentLength + length > MAX_BATCH_CHARACTERS) flush();
-      current.push(fragment);
-      currentLength += length;
+    sentences.forEach((sentence, sentenceIndex) => {
+      if (sentence.preserved) {
+        flush();
+        return;
+      }
+      splitLongText(sentence.source).forEach((fragment, fragmentIndex) => {
+        const length = Array.from(fragment).length;
+        if (current.length && currentLength + length > MAX_BATCH_CHARACTERS) flush();
+        current.push({ sentenceIndex, fragmentIndex, text: fragment });
+        currentLength += length;
+      });
     });
     flush();
   });
@@ -547,22 +620,26 @@ function formatParagraph(paragraph) {
   const useChineseQuotes =
     settings.chineseQuotes && elements.targetLanguage.value === "zh-TW";
   const sentences = sourceSentences.map((sentence) => {
+    if (sentence.preserved) return { ...sentence, translation: sentence.source };
     const withBuiltIns = useChineseQuotes
       ? convertChineseQuotes(sentence.rawTranslation, quoteState)
       : sentence.rawTranslation;
+    const translation = applyRules(withBuiltIns);
     return {
       ...sentence,
-      translation: applyRules(withBuiltIns),
+      translation: paragraph.foreignOnly
+        ? sentence.source.match(/^\s*/u)[0] + translation.trim() + sentence.source.match(/\s*$/u)[0]
+        : translation,
     };
   });
 
+  const translatedParts = sentences.map((sentence) => sentence.translation);
   return {
     ...paragraph,
     sentences,
-    translation: joinTranslatedParts(
-      sentences.map((sentence) => sentence.translation),
-      elements.targetLanguage.value,
-    ).trim(),
+    translation: (paragraph.foreignOnly
+      ? translatedParts.join("")
+      : joinTranslatedParts(translatedParts, elements.targetLanguage.value)).trim(),
   };
 }
 
@@ -604,6 +681,7 @@ function loadSettings() {
         liveTranslation: typeof parsed.liveTranslation === "boolean"
           ? parsed.liveTranslation
           : DEFAULT_SETTINGS.liveTranslation,
+        foreignOnly: parsed.foreignOnly === true,
         mobileToolbarCollapsed: typeof parsed.mobileToolbarCollapsed === "boolean"
           ? parsed.mobileToolbarCollapsed
           : DEFAULT_SETTINGS.mobileToolbarCollapsed,
@@ -770,7 +848,7 @@ function moveRule(index, direction) {
 
 function updateStats() {
   const text = elements.sourceEditor.value;
-  elements.sourceEditor.lang = sentenceLocale(elements.sourceLanguage.value, text);
+  elements.sourceEditor.lang = sentenceLocale(foreignOnlyEnabled() ? "auto" : elements.sourceLanguage.value, text);
   elements.characterStat.textContent = `${Array.from(text).length.toLocaleString()} 字元`;
   elements.paragraphStat.textContent = `${parseParagraphs(text).length} 段`;
   elements.clearButtons.forEach((button) => {
@@ -779,8 +857,13 @@ function updateStats() {
 }
 
 function updateLanguageHeadings() {
-  const source = languageName(elements.sourceLanguage.value);
+  const selective = foreignOnlyEnabled();
+  const source = languageName(selective ? "auto" : elements.sourceLanguage.value);
   const target = languageName(elements.targetLanguage.value);
+  elements.foreignOnlyToggle.disabled = elements.targetLanguage.value !== "zh-TW";
+  elements.foreignOnlyToggle.checked = selective;
+  elements.sourceLanguage.disabled = selective;
+  elements.sourceLanguage.title = selective ? "只翻外語時自動偵測原文語言" : "";
   elements.sourceHeading.textContent = source;
   elements.targetHeading.textContent = target;
   elements.readingSourceHeading.textContent = source;
@@ -927,6 +1010,10 @@ function setActiveSentence(paragraphId, sentenceId) {
 
 function appendSentenceSegments(card, paragraph, field, label) {
   paragraph.sentences.forEach((sentence) => {
+    if (sentence.preserved) {
+      if (field === "source") card.append(document.createTextNode(sentence.source));
+      return;
+    }
     const segment = document.createElement("span");
     segment.className = "sentence-segment";
     segment.dataset.sentenceId = String(sentence.id);
@@ -967,10 +1054,12 @@ function renderParagraphs() {
     const pair = document.createElement("article");
     pair.className = "paragraph-pair";
     pair.dataset.id = String(paragraph.id);
+    const sourceOnly = paragraph.foreignOnly && paragraph.sentences.every((sentence) => sentence.preserved);
+    pair.classList.toggle("is-source-only", sourceOnly);
 
     const source = document.createElement("div");
     source.className = "paragraph-card source-card";
-    source.lang = sentenceLocale(elements.sourceLanguage.value, paragraph.source);
+    source.lang = sentenceLocale(paragraph.foreignOnly ? "auto" : elements.sourceLanguage.value, paragraph.source);
     source.tabIndex = 0;
     source.setAttribute("aria-label", `原文第 ${paragraph.id + 1} 段`);
     appendSentenceSegments(source, paragraph, "source", "原文");
@@ -992,7 +1081,8 @@ function renderParagraphs() {
     translation.setAttribute("aria-label", `譯文第 ${paragraph.id + 1} 段`);
     appendSentenceSegments(translation, paragraph, "translation", "譯文");
 
-    pair.append(source, connector, translation);
+    pair.append(source, connector);
+    if (!sourceOnly) pair.append(translation);
     pair.addEventListener("mouseenter", () => setActiveParagraph(paragraph.id));
     pair.addEventListener("mouseleave", () => setActiveParagraph(null));
     pair.addEventListener("focusin", (event) => {
@@ -1105,7 +1195,8 @@ async function translateSources(
   signal,
   onProgress = () => {},
 ) {
-  const { sentenceSources, jobs } = createSentenceJobs(sources, sourceLanguage);
+  const foreignOnly = foreignOnlyEnabled(targetLanguage);
+  const { sentenceSources, jobs } = createSentenceJobs(sources, sourceLanguage, foreignOnly);
   const batches = makeBatches(jobs);
   const results = new Map();
   let nextBatch = 0;
@@ -1119,7 +1210,7 @@ async function translateSources(
       const batch = batches[batchIndex];
       const translated = await translateBatch(
         batch,
-        sourceLanguage,
+        foreignOnly ? "auto" : sourceLanguage,
         targetLanguage,
         signal,
       );
@@ -1149,18 +1240,24 @@ async function translateSources(
 
   return sources.map((source, paragraphIndex) => {
     const sentences = sentenceSources[paragraphIndex].map(
-      (sentenceSource, sentenceIndex) => ({
-        id: sentenceIndex,
-        source: sentenceSource,
-        rawTranslation: joinTranslatedParts(
+      (sentence, sentenceIndex) => {
+        const rawTranslation = joinTranslatedParts(
           translatedBySentence.get(`${paragraphIndex}:${sentenceIndex}`) || [],
           targetLanguage,
-        ),
-      }),
+        );
+        const preserved = Boolean(sentence.preserved || (foreignOnly && !rawTranslation.trim()));
+        return {
+          id: sentenceIndex,
+          source: sentence.source,
+          preserved,
+          rawTranslation: preserved ? sentence.source : rawTranslation,
+        };
+      },
     );
     return {
       id: paragraphIndex,
       source,
+      foreignOnly,
       rawTranslation: joinTranslatedParts(
         sentences.map((sentence) => sentence.rawTranslation),
         targetLanguage,
@@ -1171,11 +1268,12 @@ async function translateSources(
 }
 
 function liveCacheKey(source, sourceLanguage, targetLanguage) {
-  return JSON.stringify([sourceLanguage, targetLanguage, source]);
+  return JSON.stringify([sourceLanguage, targetLanguage, foreignOnlyEnabled(targetLanguage), source]);
 }
 
 function cacheRawParagraph(key, paragraph) {
   liveTranslationCache.set(key, {
+    foreignOnly: paragraph.foreignOnly,
     rawTranslation: paragraph.rawTranslation,
     sentences: paragraph.sentences.map((sentence) => ({ ...sentence })),
   });
@@ -1193,6 +1291,7 @@ function paragraphFromLiveCache(cached, source, id) {
   return formatParagraph({
     id,
     source,
+    foreignOnly: cached.foreignOnly,
     rawTranslation: cached.rawTranslation,
     sentences: cached.sentences.map((sentence) => ({ ...sentence })),
   });
@@ -1208,7 +1307,7 @@ async function performLiveTranslation(requestVersion) {
     renderLivePreview();
     return;
   }
-  if (sourceLanguage === targetLanguage) {
+  if (!foreignOnlyEnabled(targetLanguage) && sourceLanguage === targetLanguage) {
     updateLivePreviewStatus("語言不可相同");
     showToast("原文和譯文語言相同，換一邊再翻譯。", "error");
     return;
@@ -1232,7 +1331,9 @@ async function performLiveTranslation(requestVersion) {
         sourceLanguage,
         targetLanguage,
         controller.signal,
-        (completed, total) => updateProgress(completed, total),
+        (completed, total) => {
+          if (abortController === controller && !controller.signal.aborted) updateProgress(completed, total);
+        },
       );
       if (requestVersion !== liveTranslationVersion) return;
       translated.forEach((paragraph, index) => {
@@ -1294,7 +1395,7 @@ async function translate() {
     showToast("先放一點原文進來啦，空氣沒辦法翻譯。", "error");
     return;
   }
-  if (elements.sourceLanguage.value === elements.targetLanguage.value) {
+  if (!foreignOnlyEnabled() && elements.sourceLanguage.value === elements.targetLanguage.value) {
     showToast("原文和譯文語言相同，換一邊再翻譯。", "error");
     return;
   }
@@ -1310,8 +1411,11 @@ async function translate() {
       elements.sourceLanguage.value,
       elements.targetLanguage.value,
       controller.signal,
-      (completed, total) => updateProgress(completed, total),
+      (completed, total) => {
+        if (abortController === controller && !controller.signal.aborted) updateProgress(completed, total);
+      },
     );
+    if (abortController !== controller || controller.signal.aborted) return;
     paragraphs = rawParagraphs.map((paragraph) => formatParagraph(paragraph));
     renderParagraphs();
     const sentenceCount = paragraphs.reduce(
@@ -1320,6 +1424,7 @@ async function translate() {
     );
     showToast(`翻譯完成，共 ${paragraphs.length} 段、${sentenceCount} 句。`);
   } catch (error) {
+    if (abortController !== controller) return;
     if (error instanceof DOMException && error.name === "AbortError") {
       showToast("已停止翻譯。");
     } else {
@@ -1380,21 +1485,29 @@ function setLiveTranslation(enabled) {
   showToast(enabled ? "即時翻譯已開啟。" : "即時翻譯已關閉。");
 }
 
+function resetForLanguageMode() {
+  clearTimeout(liveTranslationTimer);
+  liveTranslationVersion += 1;
+  abortController?.abort();
+  abortController = null;
+  setBusy(false);
+  liveTranslationCache.clear();
+  updateLanguageHeadings();
+  resetResult();
+  scheduleLiveTranslation(true);
+}
+
 elements.sourceEditor.addEventListener("input", () => {
   updateStats();
   scheduleLiveTranslation();
 });
-elements.sourceLanguage.addEventListener("change", () => {
-  liveTranslationCache.clear();
-  updateLanguageHeadings();
-  resetResult();
-  scheduleLiveTranslation(true);
-});
-elements.targetLanguage.addEventListener("change", () => {
-  liveTranslationCache.clear();
-  updateLanguageHeadings();
-  resetResult();
-  scheduleLiveTranslation(true);
+elements.sourceLanguage.addEventListener("change", resetForLanguageMode);
+elements.targetLanguage.addEventListener("change", resetForLanguageMode);
+elements.foreignOnlyToggle.addEventListener("change", (event) => {
+  settings.foreignOnly = event.currentTarget.checked;
+  persistSettings();
+  resetForLanguageMode();
+  showToast(settings.foreignOnly ? "已開啟只翻外語。" : "已恢復完整翻譯。");
 });
 function stopTranslation() {
   clearTimeout(liveTranslationTimer);
@@ -1443,10 +1556,7 @@ elements.swapButton.addEventListener("click", () => {
       .map((paragraph) => paragraph.translation)
       .join("\n\n");
   }
-  liveTranslationCache.clear();
-  updateLanguageHeadings();
-  resetResult();
-  scheduleLiveTranslation(true);
+  resetForLanguageMode();
 });
 
 elements.rulesButton.addEventListener("click", () => {
