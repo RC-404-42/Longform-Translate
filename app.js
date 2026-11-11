@@ -221,24 +221,30 @@ function segmentSentences(text, language = "auto") {
 }
 
 const HAN = /\p{Script=Han}/u;
-const JAPANESE_OR_KOREAN = /[\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
-const SHORT_FOREIGN_REPLIES = /^(?:yes|no|okay|ok|fine|hey|hello|thanks|sorry|what|why|wait|stop|please|never|sure|bonjour|merci|oui|non|hola|gracias|sí|nein|danke|ciao|grazie|obrigad[oa])$/iu;
+const KANA = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const FOREIGN_LETTER_PERCENT = 70;
+const TITLE_NAME = /^\p{Lu}[\p{Ll}\p{M}]+(?:[-'’]\p{Lu}?[\p{Ll}\p{M}]+)*(?:\s+(?:\p{Lu}[\p{Ll}\p{M}]+(?:[-'’]\p{Lu}?[\p{Ll}\p{M}]+)*|[IVXLCDM]{1,6})){0,4}$/u;
+const QUOTE_SPEECH_END = /[.!?。！？…][\s.!?。！？…"'”’」』）》】]*$/u;
+const SPEECH_LEAD = /(?:[說問喊答道]|低語|嘀咕|喃喃|回應)\s*[：:]?\s*$/u;
 
-function isForeignText(text) {
+function letterProfile(text) {
   const letters = text.match(/\p{L}/gu) || [];
-  if (!letters.length) return false;
-  if (HAN.test(text)) {
-    const kanaOrHangul = text.match(JAPANESE_OR_KOREAN)?.length || 0;
-    return kanaOrHangul >= 2 && kanaOrHangul / letters.length >= 0.22;
-  }
-  if (letters.some((letter) => !/\p{Script=Latin}/u.test(letter))) return true;
+  const foreign = letters.filter((letter) => !HAN.test(letter));
+  const kana = foreign.filter((letter) => KANA.test(letter)).length;
+  return {
+    qualifies: letters.length > 0 && foreign.length * 100 >= letters.length * FOREIGN_LETTER_PERCENT,
+    // Keep support for Japanese sentences combining kana and kanji.
+    likelyJapanese: foreign.length < letters.length
+      && kana >= 2 && kana === foreign.length && kana / letters.length >= 0.22,
+  };
+}
 
-  const words = text.match(/\p{Script=Latin}[\p{Script=Latin}\p{M}]*(?:[’'-]\p{Script=Latin}[\p{Script=Latin}\p{M}]*)*/gu) || [];
-  if (words.some((word) => SHORT_FOREIGN_REPLIES.test(word))) return true;
-  if (words.length === 1) return /(?:n[’']t|[’'](?:m|re|ve|ll|d))$/iu.test(words[0]);
-  // Avoid sending a standalone name such as “Marshall Nolen”.
-  return words.length > 4 || words.slice(1).some((word) => /^\p{Ll}/u.test(word))
-    || (words.length > 1 && words.some((word) => /^(?:i|you|we|they|he|she|it|is|am|are|do|can|will)$/iu.test(word)));
+function looksLikeName(text, embedded = false) {
+  if (/[!?！？]/u.test(text)) return false;
+  const name = text.trim().replace(/^[\p{P}\p{S}\s]+|[\p{P}\p{S}\s]+$/gu, "");
+  if (!TITLE_NAME.test(name)) return false;
+  // A single word with sentence punctuation may be an utterance, e.g. “Hola.”
+  return embedded || /\s/u.test(name) || !QUOTE_SPEECH_END.test(text);
 }
 
 function segmentWithLeadingSpace(text) {
@@ -249,22 +255,42 @@ function segmentWithLeadingSpace(text) {
   return pieces;
 }
 
-function unquotedForeignParts(text) {
+function partsForForeignSentence(sentence, dialogue) {
+  const profile = letterProfile(sentence);
+  if (profile.likelyJapanese) return [{ source: sentence, preserved: false }];
+  if (!profile.qualifies) return [{ source: sentence, preserved: true }];
+  if (!HAN.test(sentence)) {
+    const quote = sentence.trim().match(/^(?:「[^「」]+」|『[^『』]+』|“[^“”]+”|"[^"\n]+")$/u)?.[0];
+    const quotedUtterance = quote && QUOTE_SPEECH_END.test(quote.slice(1, -1));
+    return [{ source: sentence, preserved: !dialogue && !quotedUtterance && looksLikeName(sentence) }];
+  }
+  // A qualifying mixed sentence still must not send the Chinese spans.
+  return sentence.split(/([\p{Script=Han}、。，；：！？「」『』《》〈〉【】（）…]+)/u)
+    .filter(Boolean)
+    .map((source) => ({
+      source,
+      preserved: HAN.test(source) || !/\p{L}/u.test(source) || (!dialogue && looksLikeName(source, true)),
+    }));
+}
+
+function unquotedForeignParts(text, dialogue = false) {
   return segmentWithLeadingSpace(text).flatMap((sentence) => {
-    if (HAN.test(sentence)) {
+    if (!dialogue && HAN.test(sentence)) {
       for (const match of sentence.matchAll(/[：:]/gu)) {
         const split = match.index + 1;
         const head = sentence.slice(0, split);
         const tail = sentence.slice(split);
-        if (HAN.test(head) && isForeignText(tail)) {
+        if (!HAN.test(head) || !tail.trim()) continue;
+        const tailParts = partsForForeignSentence(tail, SPEECH_LEAD.test(head));
+        if (tailParts.some((part) => !part.preserved)) {
           return [
             { source: head, preserved: true },
-            { source: tail, preserved: false },
+            ...tailParts,
           ];
         }
       }
     }
-    return [{ source: sentence, preserved: !isForeignText(sentence) }];
+    return partsForForeignSentence(sentence, dialogue);
   });
 }
 
@@ -272,16 +298,23 @@ function foreignOnlySentenceParts(text) {
   if (!HAN.test(text)) return unquotedForeignParts(text);
   const parts = [];
   let cursor = 0;
-  // Extract complete quotes before sentence segmentation so dialogue can span sentences.
+  // Extract dialogue before sentence segmentation, but leave quoted terms in their narration.
   for (const match of text.matchAll(/「[^「」]+」|『[^『』]+』|“[^“”]+”|"[^"\n]+"/gu)) {
     const quote = match[0];
     const inner = quote.slice(1, -1);
-    if (!isForeignText(inner)) continue;
-    parts.push(...unquotedForeignParts(text.slice(cursor, match.index)));
+    const head = text.slice(cursor, match.index);
+    const after = match.index + quote.length;
+    const spoken = SPEECH_LEAD.test(head) || QUOTE_SPEECH_END.test(inner)
+      || (/[：:]\s*$/u.test(head) && !looksLikeName(inner))
+      || (!head.trim() && !text.slice(after).trim() && !looksLikeName(inner));
+    if (!spoken) continue;
+    const dialogueParts = unquotedForeignParts(inner, true);
+    if (!dialogueParts.some((part) => !part.preserved)) continue;
+    parts.push(...unquotedForeignParts(head));
     parts.push({ source: quote[0], preserved: true });
-    parts.push(...unquotedForeignParts(inner));
+    parts.push(...dialogueParts);
     parts.push({ source: quote.at(-1), preserved: true });
-    cursor = match.index + quote.length;
+    cursor = after;
   }
   parts.push(...unquotedForeignParts(text.slice(cursor)));
   return parts;
