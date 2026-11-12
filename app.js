@@ -1100,6 +1100,7 @@ function renderParagraphs() {
     const connector = document.createElement("div");
     connector.className = "pair-connector";
     connector.setAttribute("aria-hidden", "true");
+    connector.dataset.mobileNumber = String(paragraph.id + 1).padStart(2, "0");
     const number = document.createElement("span");
     number.textContent = String(paragraph.id + 1);
     connector.append(number);

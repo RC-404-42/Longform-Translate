@@ -115,10 +115,20 @@ input:focus-visible,
   font-size: 16px;
 }
 
-.brand-lockup p {
-  margin: 3px 0 0;
+.brand-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.brand-title h1 {
+  font-size: 20px;
+}
+
+.brand-version {
   color: var(--muted);
-  font-size: 12px;
+  font: 12px var(--mono);
+  white-space: nowrap;
 }
 
 .button {
@@ -952,7 +962,8 @@ progress::-moz-progress-bar {
 @media (max-width: 720px) {
   .app-shell { padding: 0 10px 18px; }
   .topbar { min-height: 68px; gap: 8px; }
-  .brand-lockup p { display: none; }
+  .brand-title h1 { font-size: 16px; }
+  .brand-version { display: none; }
   .brand-mark { width: 36px; height: 36px; }
   .topbar-actions { flex: none; gap: 6px; }
   .topbar-actions .button {
@@ -1100,58 +1111,62 @@ progress::-moz-progress-bar {
   .source-editor { min-height: 50vh; padding: 18px; font-size: 15px; }
   .live-preview { padding: 18px; }
   .reading-headings { display: none; }
-  .paragraph-pairs { padding: 8px; }
+  .paragraph-pairs { padding: 10px clamp(10px, 4vw, 16px) 14px; }
   .paragraph-pair {
-    grid-template-columns: 17px minmax(0, 1fr);
-    grid-template-rows: auto 9px auto;
-    column-gap: 3px;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "number" "source" "translation";
+    gap: 8px;
+    padding: 13px 15px 14px;
+    border: 1px solid #292b37;
+    border-radius: 16px;
+    background: #161820;
+    transition: background 150ms ease, border-color 150ms ease;
   }
-  .paragraph-pair + .paragraph-pair { margin-top: 18px; }
-  .paragraph-card { padding: 15px; font-size: 14px; line-height: 1.72; }
-  .source-card { grid-area: 1 / 2; border-color: #272830; background: #14151a; }
-  .translation-card { grid-area: 3 / 2; border-color: #332d42; background: #191720; }
-  .paragraph-pair::after {
-    content: "";
-    grid-area: 2 / 2;
-    align-self: center;
-    height: 1px;
-    margin-inline: 6px;
-    background: #35343f;
-    pointer-events: none;
+  .paragraph-pair + .paragraph-pair { margin-top: 12px; }
+  .paragraph-pair.is-active {
+    border-color: #8070b1;
+    background: #1b1927;
   }
-  .paragraph-pair.is-active::after { background: #685686; }
-  .paragraph-pair.is-source-only { grid-template-rows: auto; }
-  .paragraph-pair.is-source-only::after { content: none; }
-  .paragraph-pair.is-source-only .pair-connector { grid-row: 1; }
-  .pair-connector {
-    grid-area: 2 / 1;
-    place-items: center end;
-    align-content: center;
-    min-height: 0;
-    padding-top: 0;
-    pointer-events: none;
-  }
-  .pair-connector::before { display: none; }
-  .pair-connector span,
-  .paragraph-pair.is-active .pair-connector span {
-    display: block;
-    min-width: 0;
-    max-width: 100%;
-    height: auto;
-    margin-top: 0;
+  .paragraph-pair.is-source-only { grid-template-areas: "number" "source"; }
+  .paragraph-pair .paragraph-card {
     border: 0;
     border-radius: 0;
     padding: 0;
+    font-family: Georgia, "Noto Serif TC", "Songti TC", "Noto Serif CJK TC", "PMingLiU", serif;
+    font-size: 16px;
+    line-height: 1.55;
+  }
+  .paragraph-pair.is-active .paragraph-card {
     background: none;
     box-shadow: none;
-    color: var(--muted);
-    font-size: 10px;
-    line-height: 12px;
-    letter-spacing: -.4px;
-    overflow-wrap: anywhere;
-    text-align: right;
   }
-  .paragraph-pair.is-active .pair-connector span { color: #cbbdff; }
+  .source-card {
+    grid-area: source;
+    color: #bcb9c7;
+  }
+  .paragraph-pair.is-source-only .source-card { color: #e7e4ee; }
+  .paragraph-pair .translation-card {
+    grid-area: translation;
+    border-top: 1px dashed #383544;
+    padding-top: 8px;
+    color: #f1edf7;
+  }
+  .paragraph-pair.is-active .translation-card { border-top-color: #534764; }
+  .pair-connector {
+    grid-area: number;
+    display: block;
+    border-bottom: 1px dashed #383544;
+    padding-bottom: 7px;
+    color: var(--muted);
+    font: 11px/1.3 var(--mono);
+    font-weight: 600;
+    letter-spacing: .08em;
+    pointer-events: none;
+  }
+  .pair-connector::before,
+  .pair-connector span { display: none; }
+  .pair-connector::after { content: attr(data-mobile-number) " ·"; }
+  .paragraph-pair.is-active .pair-connector { color: #cbbdff; border-bottom-color: #534764; }
   .reading-footer, .pane-footer, .app-footer { align-items: flex-start; flex-direction: column; justify-content: center; padding-block: 10px; }
 
   .progress-strip { grid-template-columns: 1fr 36px; }
