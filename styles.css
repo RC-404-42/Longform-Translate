@@ -1132,9 +1132,8 @@ progress::-moz-progress-bar {
     border: 0;
     border-radius: 0;
     padding: 0;
-    font-family: Georgia, "Noto Serif TC", "Songti TC", "Noto Serif CJK TC", "PMingLiU", serif;
-    font-size: 16px;
-    line-height: 1.55;
+    font-size: 14px;
+    line-height: 1.72;
   }
   .paragraph-pair.is-active .paragraph-card {
     background: none;
